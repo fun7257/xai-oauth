@@ -1,0 +1,17 @@
+# Binaries
+/xai-oauth
+*.exe
+*.test
+*.out
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local secrets / runtime (never commit)
+.env
+.env.*
+*.sock
+.xai-oauth/
