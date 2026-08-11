@@ -45,10 +45,12 @@ xai-oauth <command> [flags]
 | Flag | Commands | Env fallback | Default | Meaning |
 |------|----------|--------------|---------|---------|
 | `--socket` | all control + serve | `XAI_OAUTH_SOCKET` | See §2.3 | Unix socket path |
-| `--secret` | all control + serve | `XAI_OAUTH_SECRET` | serve: random if empty; others: **error if empty** | Local API secret |
 | `--no-browser` | `serve` only | — | `false` | If set, do not auto-open browser; still print URL + code |
 | `--foreground` | `serve` only | — | `false` | Stay attached after login (do not background) |
 | `--from-login` | `serve` only (internal) | — | — | Child mode: read login handoff (secret + tokens) from stdin; not for operators |
+
+Local API secret for the **CLI** is **env-only**: `XAI_OAUTH_SECRET` (no `--secret` flag).  
+`serve` generates a random secret if the env is unset and prints it once; export it before control commands.
 
 ### 2.3 Default socket path
 
@@ -260,7 +262,7 @@ if err != nil { /* errors.Is reauth / unavailable / ... */ }
 
 | Variable | Used by | Purpose |
 |----------|---------|---------|
-| `XAI_OAUTH_SECRET` | CLI, SDK | Local API secret |
+| `XAI_OAUTH_SECRET` | CLI (required for control; serve generates if empty), SDK fallback | Local API secret (CLI has no flag) |
 | `XAI_OAUTH_SOCKET` | CLI, SDK | Unix socket path |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` / `NO_PROXY` (and lowercase) | `serve` egress only | Outbound OAuth to `auth.x.ai` |
 

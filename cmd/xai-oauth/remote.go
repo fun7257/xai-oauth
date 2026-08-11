@@ -12,13 +12,11 @@ import (
 	"github.com/fun7257/xai-oauth/client"
 )
 
-func requireSecret(flagSecret string) (string, error) {
-	secret := strings.TrimSpace(flagSecret)
+// requireSecret reads XAI_OAUTH_SECRET only (no CLI flag; avoids argv leakage).
+func requireSecret() (string, error) {
+	secret := strings.TrimSpace(os.Getenv(client.EnvSecret))
 	if secret == "" {
-		secret = strings.TrimSpace(os.Getenv(client.EnvSecret))
-	}
-	if secret == "" {
-		return "", fmt.Errorf("secret is required (--secret or %s)", client.EnvSecret)
+		return "", fmt.Errorf("secret is required (set env %s)", client.EnvSecret)
 	}
 	return secret, nil
 }
@@ -35,7 +33,7 @@ func cmdStatus(args []string) error {
 	if err := cf.parse(args); err != nil {
 		return err
 	}
-	secret, err := requireSecret(*cf.secret)
+	secret, err := requireSecret()
 	if err != nil {
 		return err
 	}
@@ -84,7 +82,7 @@ func cmdToken(args []string) error {
 	if err := cf.parse(args); err != nil {
 		return err
 	}
-	secret, err := requireSecret(*cf.secret)
+	secret, err := requireSecret()
 	if err != nil {
 		return err
 	}
@@ -107,7 +105,7 @@ func cmdLogout(args []string) error {
 	if err := cf.parse(args); err != nil {
 		return err
 	}
-	secret, err := requireSecret(*cf.secret)
+	secret, err := requireSecret()
 	if err != nil {
 		return err
 	}

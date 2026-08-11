@@ -49,25 +49,26 @@ func printUsage() {
 
 Usage:
   xai-oauth serve   [flags]   device login, then daemonize (background by default)
-  xai-oauth status  [flags]   query running daemon (requires secret)
-  xai-oauth token   [flags]   print access_token (requires secret)
-  xai-oauth logout  [flags]   clear session and stop daemon (requires secret)
+  xai-oauth status  [flags]   query running daemon (needs XAI_OAUTH_SECRET)
+  xai-oauth token   [flags]   print access_token (needs XAI_OAUTH_SECRET)
+  xai-oauth logout  [flags]   clear session and stop daemon (needs XAI_OAUTH_SECRET)
   xai-oauth version
 
 Credentials live only in the serve process (memory). After successful login,
 serve detaches so the terminal is free. Control commands talk over
 HTTP-on-Unix-socket. Restart serve after logout/reauth.
 
+Local API secret is env-only: XAI_OAUTH_SECRET (no --secret flag).
+serve generates one if unset and prints it once — export it for status/token/logout.
+
 Flags (per command):
   --socket  path (default: $XDG_RUNTIME_DIR/…, else ~/.xai-oauth/…, else $TMPDIR/…)
             env: XAI_OAUTH_SOCKET
-  --secret  local API secret (env XAI_OAUTH_SECRET; serve generates if empty;
-            required for status/token/logout)
   --no-browser   serve: do not open the device-login browser (default: try open)
   --foreground   serve: stay in the terminal after login (do not background)
 
 SDK: github.com/fun7257/xai-oauth/client
-  c, _ := client.New(client.Config{Secret: "..."})
+  c, _ := client.New(client.Config{}) // Secret from XAI_OAUTH_SECRET, or Config.Secret
   tok, _ := c.Get(ctx)
 `)
 }

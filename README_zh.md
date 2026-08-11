@@ -14,7 +14,7 @@
 | 应该 | 不要 |
 |------|------|
 | 使用默认 **仅属主可访问** 的 Unix socket（0600） | 当成共享/公网服务 |
-| 优先用环境变量 **`XAI_OAUTH_SECRET`**（少用 `--secret` 命令行） | 在 CI/共享机上把 secret 写进 argv |
+| 只通过环境变量 **`XAI_OAUTH_SECRET`** 提供本机 secret（CLI **无** `--secret`） | 把 secret 写进命令行或可读脚本 |
 | 将 OAuth access/refresh 当秘密 | 完整 token 进日志；`token` 的 stdout 也当秘密 |
 | logout / reauth 后重新 `serve` | 指望进程重启后仍登录 |
 

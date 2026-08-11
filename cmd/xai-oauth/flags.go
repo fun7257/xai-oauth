@@ -21,7 +21,6 @@ func defaultSocket() string {
 type commonFlags struct {
 	fs     *flag.FlagSet
 	socket *string
-	secret *string
 }
 
 func newCommonFlags(name string) *commonFlags {
@@ -29,7 +28,6 @@ func newCommonFlags(name string) *commonFlags {
 	fs.SetOutput(os.Stderr)
 	c := &commonFlags{fs: fs}
 	c.socket = fs.String("socket", defaultSocket(), "unix socket path (env XAI_OAUTH_SOCKET)")
-	c.secret = fs.String("secret", os.Getenv(client.EnvSecret), "local API secret")
 	return c
 }
 

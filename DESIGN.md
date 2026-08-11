@@ -64,15 +64,15 @@ xai-oauth serve     ──设备码──► 内存 Session ──HTTP/UDS──
 ### 3.0 CLI
 
 ```text
-xai-oauth serve   [--socket] [--secret] [--no-browser] [--foreground]
+xai-oauth serve   [--socket] [--no-browser] [--foreground]
                   # 设备码登录；默认 re-exec 后台 daemon，--foreground 保持前台
-xai-oauth status  [--socket] [--secret]                  # 查 daemon
-xai-oauth token   [--socket] [--secret]                  # 打印 access_token
-xai-oauth logout  [--socket] [--secret]                  # 清会话并停 daemon
+xai-oauth status  [--socket]                             # 查 daemon
+xai-oauth token   [--socket]                             # 打印 access_token
+xai-oauth logout  [--socket]                             # 清会话并停 daemon
 xai-oauth version
 ```
 
-`status`/`token`/`logout` 要求 **serve 已在跑**，且 **必须** 提供与 serve 一致的 secret（`--secret` 或 `XAI_OAUTH_SECRET`）。
+`status`/`token`/`logout` 要求 **serve 已在跑**，且环境变量 **`XAI_OAUTH_SECRET`** 与 serve 一致（CLI **无** `--secret` 旗标）。
 
 ### 3.1 HTTP
 
@@ -176,8 +176,8 @@ workspaces:read workspaces:write
 | GET /token | secret | 可用 AT |
 | POST /logout | secret | 清内存；serve 随后退出 |
 
-Secret：`--secret` → `XAI_OAUTH_SECRET` → serve 可随机生成并打印一次。  
-CLI 的 status/token/logout **必须**提供 secret。
+Secret：仅 **`XAI_OAUTH_SECRET`**（CLI 无 `--secret`）；serve 未设置时可随机生成并打印一次。  
+CLI 的 status/token/logout **必须**已 export 该环境变量。
 
 ---
 
@@ -186,11 +186,10 @@ CLI 的 status/token/logout **必须**提供 secret。
 | 来源 | 名称 | 默认 |
 |------|------|------|
 | flag | `--socket` | `$XDG_RUNTIME_DIR/…` → `~/.xai-oauth/…` → `$TMPDIR/…`（见 REFERENCE §2.3） |
-| flag | `--secret` | serve：空 → env → 生成；其它命令：空 → env，**缺则报错** |
 | flag | `--no-browser` | false（默认尝试打开浏览器） |
 | flag | `--foreground` | false（登录成功后默认后台 re-exec daemon） |
 | env | `XAI_OAUTH_SOCKET` | 覆盖默认 socket 路径 |
-| env | `XAI_OAUTH_SECRET` | 本机 API secret |
+| env | `XAI_OAUTH_SECRET` | 本机 API secret（CLI **唯一**来源；serve 空则生成） |
 | env | 标准 `HTTP(S)_PROXY` 等 | 仅出站 IdP；**不**用于 UDS |
 
 监听：`net.Listen("unix", path)`，socket **0600**，父目录 **0700 且属主为当前 UID**。  

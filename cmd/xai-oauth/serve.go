@@ -26,7 +26,7 @@ import (
 
 // loginHandoff is the stdin JSON payload from the interactive parent to the
 // background daemon child (memory handoff only; never written to disk).
-// Secret is included so the child need not take --secret on argv.
+// Secret is included so the child need not read env or flags.
 type loginHandoff struct {
 	Secret        string `json:"secret"`
 	AccessToken   string `json:"access_token"`
@@ -39,7 +39,6 @@ func cmdServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	socket := fs.String("socket", defaultSocket(), "unix socket path (env XAI_OAUTH_SOCKET)")
-	secret := fs.String("secret", os.Getenv(client.EnvSecret), "local API secret (generated if empty)")
 	noBrowser := fs.Bool("no-browser", false, "do not open the system browser for device login")
 	foreground := fs.Bool("foreground", false, "stay attached to the terminal after login (do not background)")
 	fromLogin := fs.Bool("from-login", false, "internal: read login handoff from stdin and serve")
@@ -55,7 +54,7 @@ func cmdServe(args []string) error {
 		return fmt.Errorf("empty --socket path")
 	}
 
-	// Background child: secret + session from stdin only (no --secret on argv).
+	// Background child: secret + session from stdin only (never CLI flags).
 	if *fromLogin {
 		sess, sec, err := sessionFromHandoff(os.Stdin)
 		if err != nil {
@@ -64,7 +63,8 @@ func cmdServe(args []string) error {
 		return runServer(sockPath, sec, sess)
 	}
 
-	sec := strings.TrimSpace(*secret)
+	// Operator secret: environment only (no --secret flag).
+	sec := strings.TrimSpace(os.Getenv(client.EnvSecret))
 	generated := false
 	var err error
 	if sec == "" {
@@ -128,7 +128,7 @@ func printLoginCredentials(sockPath, sec string, generated bool) {
 		fmt.Fprintln(os.Stderr, "  (save this secret; it is not stored on disk)")
 		fmt.Fprintln(os.Stderr, "  export XAI_OAUTH_SECRET='…'")
 	} else {
-		fmt.Fprintln(os.Stderr, "  secret:  (from --secret or XAI_OAUTH_SECRET)")
+		fmt.Fprintln(os.Stderr, "  secret:  (from env XAI_OAUTH_SECRET)")
 	}
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Commands (after daemon is up):")
@@ -234,7 +234,7 @@ func spawnBackgroundDaemon(sockPath string, h *loginHandoff) (int, error) {
 	}
 	defer devNull.Close()
 
-	// No --secret on argv: secret travels only in the stdin handoff.
+	// Secret travels only in the stdin handoff (not env, not argv).
 	cmd := exec.Command(exe, "serve",
 		"--from-login",
 		"--socket", sockPath,

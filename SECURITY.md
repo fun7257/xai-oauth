@@ -35,7 +35,7 @@ secret can:
 Attack surface is roughly:
 
 1. **Socket reachability** (filesystem permissions on the `.sock` path)
-2. **Possession of the local secret** (`XAI_OAUTH_SECRET` / `--secret`)
+2. **Possession of the local secret** (env `XAI_OAUTH_SECRET` only for CLI)
 3. **Process memory** of `serve` (access + refresh tokens, no disk by design)
 
 Without the secret, `/token` / `/status` / `/logout` return 401.  
@@ -69,12 +69,18 @@ the Go SDK still sends the secret on every call.
 
 ## Local secret
 
-- Prefer **`XAI_OAUTH_SECRET` in the environment** (or a file you source) over
-  `--secret` on the command line. Values in argv are visible to same-UID peers
-  (`ps`, `/proc/*/cmdline`) and some audit agents.
+- **CLI: environment only** — `XAI_OAUTH_SECRET`. There is **no** `--secret`
+  flag (avoids argv leakage via `ps` / `/proc/*/cmdline`).
+- Source the variable from a private file or shell profile if needed; do not
+  paste it into shared scripts.
 - If unset, `serve` generates a random secret and prints it **once** to stderr —
-  treat it like a password; it is not written to disk by this tool. Stderr may
-  still enter terminal scrollback or session recorders.
+  `export XAI_OAUTH_SECRET='…'` before `status` / `token` / `logout`. It is not
+  written to disk by this tool. Stderr may still enter terminal scrollback or
+  session recorders.
+- Background daemon children receive the secret once via stdin handoff (not env,
+  not argv).
+- Go SDK may also take `Config.Secret` in-process; empty falls back to
+  `XAI_OAUTH_SECRET`.
 - `xai-oauth token` prints a full OAuth **access token** on stdout — treat that
   stream as secret (shell history, CI logs, screen shares).
 - Do not commit secrets or put them in public bug reports.

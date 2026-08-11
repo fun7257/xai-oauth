@@ -16,7 +16,7 @@ call `https://api.x.ai` themselves with that bearer.
 | Do | Don’t |
 |----|--------|
 | Keep the daemon on a **user-only Unix socket** (default `0600`) | Treat this as a shared or network service |
-| Prefer **`XAI_OAUTH_SECRET` env** (not `--secret` argv) | Put secrets on the command line in CI/shared hosts |
+| Set **`XAI_OAUTH_SECRET`** in the environment (CLI has no `--secret` flag) | Put the secret on the command line or in world-readable scripts |
 | Treat OAuth access/refresh tokens as secrets | Log full tokens or leave `token` stdout in world-readable CI logs |
 | Restart `serve` after logout / reauth | Expect tokens to survive process restart |
 
