@@ -56,8 +56,10 @@ Resolution order for socket path:
 4. else `~/.xai-oauth/daemon.sock`  
 5. else `$TMPDIR/xai-oauth/daemon.sock` (home unavailable)
 
-On `serve` bind: parent directory mode **0700**, socket file mode **0600**.  
-Stale socket files at the path are removed before listen. On shutdown, the path is removed best-effort.
+On `serve` bind: parent directory must be mode **0700** **and owned by the current UID**
+(else listen fails — refuse foreign/group-writable parents, especially under `$TMPDIR`);
+socket file mode **0600**. Stale socket files at the path are removed before listen.
+On shutdown, the path is removed best-effort.
 
 ### 2.4 `serve` lifecycle
 

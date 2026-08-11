@@ -46,7 +46,7 @@ the Go SDK still sends the secret on every call.
 | Control | Default |
 |---------|---------|
 | Listen | Unix domain socket only (CLI) |
-| Socket file mode | `0600` after bind; parent dir `0700` |
+| Socket file mode | `0600` after bind; parent dir `0700` **and owned by the serving UID** (listen fails otherwise) |
 | Local authentication | Required for `/token`, `/status`, `/logout` (constant-time secret compare via SHA-256 digests) |
 | Open without secret (server) | `/health`, `/ready` only |
 | Token storage | **Memory only** — lost on process exit; no `tokens.json` |
@@ -86,7 +86,8 @@ the Go SDK still sends the secret on every call.
   3. `~/.xai-oauth/daemon.sock`
   4. `$TMPDIR/xai-oauth/daemon.sock` only if home is unavailable (weaker
      multi-user namespace; prefer setting home or `XAI_OAUTH_SOCKET`)
-- Socket file mode `0600`, parent dir `0700` after bind.
+- Socket file mode `0600`; parent dir mode `0700` **and owned by the serving UID**
+  after bind (foreign-owned or group/other-accessible parents are refused).
 - Same-UID processes can still open a `0600` socket; the **secret** is the
   second control. Do not run untrusted code as your user while `serve` is up.
 - Stale sockets from crashed processes are removed on next successful `serve`

@@ -139,7 +139,9 @@ func PollDeviceToken(ctx context.Context, client *http.Client, tokenEndpoint, de
 			Error string `json:"error"`
 		}
 		_ = json.Unmarshal(body, &errPayload)
-		switch errPayload.Error {
+		// Normalize like refresh (parseOAuthError / sanitizeOAuthErrorCode).
+		code := sanitizeOAuthErrorCode(errPayload.Error)
+		switch code {
 		case "authorization_pending":
 			if err := sleepCtx(ctx, time.Duration(currentInterval)*time.Second); err != nil {
 				return nil, err
@@ -156,7 +158,6 @@ func PollDeviceToken(ctx context.Context, client *http.Client, tokenEndpoint, de
 			continue
 		default:
 			// Public message: sanitized oauth error code only, never response body.
-			code := sanitizeOAuthErrorCode(errPayload.Error)
 			if code == "" {
 				return nil, newError("device_token_failed", "device-code token polling failed", "reauth")
 			}

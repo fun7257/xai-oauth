@@ -49,7 +49,7 @@ xai-oauth serve     ──设备码──► 内存 Session ──HTTP/UDS──
       └── Bearer ──► api.x.ai
 ```
 
-- **传输：** Unix domain socket（默认顺序：`$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` → `~/.xai-oauth/daemon.sock` → `$TMPDIR/xai-oauth/daemon.sock`），socket 文件 **0600**，目录 **0700**  
+- **传输：** Unix domain socket（默认顺序：`$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` → `~/.xai-oauth/daemon.sock` → `$TMPDIR/xai-oauth/daemon.sock`），socket 文件 **0600**，父目录 **0700 且属主为当前 UID**（否则拒绝 listen）  
 - **协议：** HTTP（`GET /token` 等）跑在 Unix socket 上  
 - **唯一持有凭证的进程：** `serve`  
 - **重登：** 再次执行 `serve`  
@@ -190,7 +190,7 @@ CLI 的 status/token/logout **必须**提供 secret。
 | env | `XAI_OAUTH_SECRET` | 本机 API secret |
 | env | 标准 `HTTP(S)_PROXY` 等 | 仅出站 IdP；**不**用于 UDS |
 
-监听：`net.Listen("unix", path)`，socket **0600**，目录 **0700**。  
+监听：`net.Listen("unix", path)`，socket **0600**，父目录 **0700 且属主为当前 UID**。  
 HTTP：`ReadHeaderTimeout` / `ReadTimeout` / `WriteTimeout` / `IdleTimeout` / `MaxHeaderBytes`。
 
 ---
