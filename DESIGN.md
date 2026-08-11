@@ -49,7 +49,7 @@ xai-oauth serve     ──设备码──► 内存 Session ──HTTP/UDS──
       └── Bearer ──► api.x.ai
 ```
 
-- **传输：** Unix domain socket（默认 `$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` 或 `~/.xai-oauth/daemon.sock`），socket 文件 **0600**，目录 **0700**  
+- **传输：** Unix domain socket（默认顺序：`$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` → `~/.xai-oauth/daemon.sock` → `$TMPDIR/xai-oauth/daemon.sock`），socket 文件 **0600**，目录 **0700**  
 - **协议：** HTTP（`GET /token` 等）跑在 Unix socket 上  
 - **唯一持有凭证的进程：** `serve`  
 - **重登：** 再次执行 `serve`  
@@ -183,7 +183,7 @@ CLI 的 status/token/logout **必须**提供 secret。
 
 | 来源 | 名称 | 默认 |
 |------|------|------|
-| flag | `--socket` | `$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` 或 `~/.xai-oauth/daemon.sock` |
+| flag | `--socket` | `$XDG_RUNTIME_DIR/…` → `~/.xai-oauth/…` → `$TMPDIR/…`（见 REFERENCE §2.3） |
 | flag | `--secret` | serve：空 → env → 生成；其它命令：空 → env，**缺则报错** |
 | flag | `--no-browser` | false（默认尝试打开浏览器） |
 | env | `XAI_OAUTH_SOCKET` | 覆盖默认 socket 路径 |
@@ -213,5 +213,6 @@ internal/server/
 2. 进入 skew 后仍能拿到可用 token  
 3. 并发 refresh 只打一次 IdP  
 4. invalid_grant → 稳定 reauth_required  
-5. 日志无完整 token；socket 文件 0600  
-6. CLI/SDK **仅** UDS；status/token/logout 与 SDK 均需 secret
+5. logout（Clear）与在途 refresh 竞态：不恢复 token  
+6. 日志无完整 token；socket 文件 0600  
+7. CLI/SDK **仅** UDS；status/token/logout 与 SDK 均需 secret

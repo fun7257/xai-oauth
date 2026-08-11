@@ -55,7 +55,7 @@ Credentials live only in the serve process (memory). Control commands talk to
 that process over HTTP-on-Unix-socket. Restart serve after logout/reauth.
 
 Flags (per command):
-  --socket  path (default: $XDG_RUNTIME_DIR/xai-oauth/daemon.sock or ~/.xai-oauth/daemon.sock)
+  --socket  path (default: $XDG_RUNTIME_DIR/…, else ~/.xai-oauth/…, else $TMPDIR/…)
             env: XAI_OAUTH_SOCKET
   --secret  local API secret (env XAI_OAUTH_SECRET; serve generates if empty;
             required for status/token/logout)

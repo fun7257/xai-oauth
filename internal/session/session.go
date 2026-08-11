@@ -189,6 +189,23 @@ func (s *Session) refreshIfNeeded(ctx context.Context) (string, error) {
 
 	exp, ok := protocol.ExpiresAtFromToken(tr.AccessToken, tr.ExpiresIn, time.Now())
 	s.mu.Lock()
+	// Clear (or sticky reauth/tier) may have won while the IdP call was in flight.
+	// Do not resurrect tokens after logout or terminal failure.
+	switch s.state {
+	case StateReauthRequired:
+		s.mu.Unlock()
+		return "", protocol.ErrReauthRequired
+	case StateTierDenied:
+		s.mu.Unlock()
+		return "", protocol.ErrTierDenied
+	}
+	if s.refreshToken == "" {
+		s.state = StateReauthRequired
+		s.lastError = "logged_out"
+		s.accessToken = ""
+		s.mu.Unlock()
+		return "", protocol.ErrReauthRequired
+	}
 	s.accessToken = tr.AccessToken
 	s.refreshToken = tr.RefreshToken
 	s.expiresAt = exp
