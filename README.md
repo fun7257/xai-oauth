@@ -58,7 +58,8 @@ change allowlists, scopes, or terms at any time; use at your own risk.
 
 ```bash
 cd xai-oauth
-go build -o xai-oauth ./cmd/xai-oauth
+make build                 # → ./xai-oauth
+# or: make install         # → ~/.local/bin/xai-oauth
 ```
 
 ## Usage
@@ -174,8 +175,11 @@ Full command / HTTP / SDK / environment tables: **[docs/REFERENCE.md](docs/REFER
 ## Development
 
 ```bash
-go test ./...
-go build -o xai-oauth ./cmd/xai-oauth
+make help      # list targets
+make check     # fmt-check + vet + test
+make build     # ./xai-oauth
+make test-race
+make cover
 ```
 
 ## License

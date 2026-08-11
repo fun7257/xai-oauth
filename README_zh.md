@@ -43,7 +43,8 @@ OAuth 使用**公开**设备码 client id（应用内无 client secret）。xAI 
 
 ```bash
 cd xai-oauth
-go build -o xai-oauth ./cmd/xai-oauth
+make build                 # → ./xai-oauth
+# 或: make install         # → ~/.local/bin/xai-oauth
 ```
 
 ## 使用
@@ -121,8 +122,11 @@ OAuth **scope 写死在代码中**，不可通过 env 配置。
 ## 开发
 
 ```bash
-go test ./...
-go build -o xai-oauth ./cmd/xai-oauth
+make help      # 列出目标
+make check     # fmt-check + vet + test
+make build     # ./xai-oauth
+make test-race
+make cover
 ```
 
 ## 许可证

@@ -3,6 +3,8 @@
 *.exe
 *.test
 *.out
+coverage.out
+coverage.html
 
 # IDE / OS
 .idea/
