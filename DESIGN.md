@@ -33,6 +33,7 @@
 - 反代 `api.x.ai`、**落盘 token**、独立 `login` 子命令
 - Team / 企业 IdP、热重登 UI、多账号
 - 多进程 flock / sibling adopt
+- **Windows**（无 UDS 控制面 / Named Pipe / 本机 TCP 回退；仅 Linux / macOS）
 
 ---
 

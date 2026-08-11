@@ -18,6 +18,8 @@ For a short getting-started path, see [README.md](../README.md).
 - There is **no** offline `login` command. Sign-in runs inside `serve`.
 - After `logout` or sticky reauth, run **`serve` again**.
 - Tokens are **not** written to disk.
+- **Platforms:** Linux and macOS only. **Windows is not supported** (CLI, SDK,
+  and packages use `//go:build unix`; no Named Pipe or TCP control plane).
 
 ---
 

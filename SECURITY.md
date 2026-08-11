@@ -19,6 +19,7 @@ It is **not**:
 
 | Intended | Not intended |
 |----------|----------------|
+| **Linux / macOS** with Unix domain sockets | **Windows** (unsupported; no UDS control plane) |
 | Unix socket owned by your user (`0600`) | Shared host multi-user trust |
 | One human operator, one OAuth session in one `serve` process | Network-exposed token minting |
 | CLI/SDK with the same local secret as `serve` | Shipping auto-generated secrets in git or tickets |

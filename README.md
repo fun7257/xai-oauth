@@ -52,7 +52,10 @@ change allowlists, scopes, or terms at any time; use at your own risk.
 
 - Go **1.26+** (see `go.mod`)
 - SuperGrok or X Premium+ (or whatever tier xAI requires for OAuth API access)
-- Linux/macOS with Unix domain sockets (primary path)
+- **Linux or macOS** with Unix domain sockets
+
+**Windows is not supported** (no CLI, SDK, or release binaries). Control plane and
+SDK use Unix domain sockets only; there is no Named Pipe / TCP fallback.
 
 ## Install
 
@@ -62,7 +65,7 @@ make build                 # → ./xai-oauth
 # or: make install         # → ~/.local/bin/xai-oauth
 ```
 
-Tagged releases (`v*`) publish Linux / macOS / Windows binaries via GitHub Actions
+Tagged releases (`v*`) publish **Linux and macOS** binaries via GitHub Actions
 (see [.github/workflows/release.yml](.github/workflows/release.yml)).
 
 ## Usage

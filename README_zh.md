@@ -37,7 +37,9 @@ OAuth 使用**公开**设备码 client id（应用内无 client secret）。xAI 
 
 - Go **1.26+**（见 `go.mod`）
 - SuperGrok 或 X Premium+ 等 xAI 要求的 OAuth API 权限
-- 支持 Unix socket 的系统（主路径）
+- **Linux 或 macOS**（Unix domain socket）
+
+**不支持 Windows**（无 CLI / SDK / 发布包）。控制面与 SDK **仅** UDS，无 Named Pipe / TCP 回退。
 
 ## 安装
 
@@ -47,7 +49,7 @@ make build                 # → ./xai-oauth
 # 或: make install         # → ~/.local/bin/xai-oauth
 ```
 
-打 `v*` tag 后，GitHub Actions 会构建 Linux / macOS / Windows 二进制并发布
+打 `v*` tag 后，GitHub Actions 会构建 **Linux / macOS** 二进制并发布
 （见 [.github/workflows/release.yml](.github/workflows/release.yml)）。
 
 ## 使用

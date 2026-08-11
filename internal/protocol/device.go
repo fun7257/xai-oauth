@@ -223,14 +223,13 @@ func DeviceLogin(ctx context.Context, client *http.Client, openBrowser bool, pri
 }
 
 func tryOpenBrowser(u string) bool {
+	// Linux/macOS only (this project does not support Windows).
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
 		cmd = exec.Command("open", u)
 	case "linux":
 		cmd = exec.Command("xdg-open", u)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
 	default:
 		return false
 	}

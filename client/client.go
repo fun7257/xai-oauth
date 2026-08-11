@@ -1,6 +1,9 @@
+//go:build unix
+
 // Package client is the SDK for the local xai-oauth token sidecar.
 //
 // Transport is Unix domain socket only (HTTP over UDS).
+// Linux and macOS only — Windows is not supported.
 //
 //	c, err := client.New(client.Config{Secret: os.Getenv("XAI_OAUTH_SECRET")})
 //	tok, err := c.Get(ctx)
