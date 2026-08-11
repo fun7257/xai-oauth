@@ -9,13 +9,6 @@ import (
 	"github.com/fun7257/xai-oauth/client"
 )
 
-func envOr(key, def string) string {
-	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
-		return v
-	}
-	return def
-}
-
 func defaultSocket() string {
 	if p := strings.TrimSpace(os.Getenv(client.EnvSocket)); p != "" {
 		return p

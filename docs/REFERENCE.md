@@ -42,7 +42,7 @@ xai-oauth <command> [flags]
 
 | Flag | Commands | Env fallback | Default | Meaning |
 |------|----------|--------------|---------|---------|
-| `--socket` | all control + serve | `XAI_OAUTH_SOCKET` | See §3 | Unix socket path |
+| `--socket` | all control + serve | `XAI_OAUTH_SOCKET` | See §2.3 | Unix socket path |
 | `--secret` | all control + serve | `XAI_OAUTH_SECRET` | serve: random if empty; others: **error if empty** | Local API secret |
 | `--no-browser` | `serve` only | — | `false` | If set, do not auto-open browser; still print URL + code |
 

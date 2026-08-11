@@ -57,14 +57,7 @@ func cmdServe(args []string) error {
 	loginCtx, loginCancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer loginCancel()
 
-	result, err := protocol.DeviceLogin(loginCtx, httpClient, !*noBrowser, func(s string) {
-		fmt.Fprintln(os.Stderr, s)
-	})
-	if err != nil {
-		return fmt.Errorf("login: %w", err)
-	}
-
-	sess, err := session.NewFromLogin(httpClient, result)
+	sess, err := loginSession(loginCtx, httpClient, !*noBrowser)
 	if err != nil {
 		return err
 	}
@@ -144,6 +137,25 @@ func cmdServe(args []string) error {
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)
 	return nil
+}
+
+// loginSession runs device login and returns a Session as the sole credential
+// holder. LoginResult token fields are zeroed before return so Clear/logout
+// cannot leave a second copy in the serve stack frame.
+func loginSession(ctx context.Context, httpClient *http.Client, openBrowser bool) (*session.Session, error) {
+	result, err := protocol.DeviceLogin(ctx, httpClient, openBrowser, func(s string) {
+		fmt.Fprintln(os.Stderr, s)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("login: %w", err)
+	}
+	sess, err := session.NewFromLogin(httpClient, result)
+	// Drop OAuth material from the login result regardless of NewFromLogin outcome.
+	result.Tokens = protocol.TokenResponse{}
+	if err != nil {
+		return nil, err
+	}
+	return sess, nil
 }
 
 func randomSecret() (string, error) {
