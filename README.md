@@ -71,18 +71,19 @@ Tagged releases (`v*`) publish **Linux and macOS** binaries via GitHub Actions
 ## Usage
 
 ```bash
-# Terminal 1 — device login, then serve on a Unix socket
+# Device login, then automatically run the daemon in the background
 ./xai-oauth serve
 # or: ./xai-oauth serve --no-browser
+# Debug / stay attached: ./xai-oauth serve --foreground
 # Save the printed local secret (if generated), e.g.:
 export XAI_OAUTH_SECRET='…'
 # Optional:
 # export XAI_OAUTH_SOCKET=/path/to/daemon.sock
 
-# Terminal 2 — control plane (same socket + secret)
+# Same terminal (or another) — control plane
 ./xai-oauth status
 ./xai-oauth token          # prints one access_token line
-./xai-oauth logout         # clears memory and stops serve
+./xai-oauth logout         # clears memory and stops the background daemon
 ```
 
 Default socket (full order: [docs/REFERENCE.md](docs/REFERENCE.md) §2.3):
@@ -96,7 +97,7 @@ Default socket (full order: [docs/REFERENCE.md](docs/REFERENCE.md) §2.3):
 
 | Command | Role |
 |---------|------|
-| `serve` | Device-code login + in-memory session + UDS HTTP |
+| `serve` | Device-code login, then **background** daemon (UDS HTTP); use `--foreground` to stay attached |
 | `status` | Query daemon (requires secret) |
 | `token` | Print usable `access_token` (requires secret) |
 | `logout` | Clear session and stop daemon (requires secret) |

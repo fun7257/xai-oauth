@@ -6,10 +6,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -21,12 +25,23 @@ import (
 	"github.com/fun7257/xai-oauth/internal/session"
 )
 
+// loginHandoff is the stdin JSON payload from the interactive parent to the
+// background daemon child (memory handoff only; never written to disk).
+type loginHandoff struct {
+	AccessToken   string `json:"access_token"`
+	RefreshToken  string `json:"refresh_token"`
+	TokenEndpoint string `json:"token_endpoint"`
+	ExpiresIn     int    `json:"expires_in"`
+}
+
 func cmdServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	socket := fs.String("socket", defaultSocket(), "unix socket path (env XAI_OAUTH_SOCKET)")
 	secret := fs.String("secret", os.Getenv(client.EnvSecret), "local API secret (generated if empty)")
 	noBrowser := fs.Bool("no-browser", false, "do not open the system browser for device login")
+	foreground := fs.Bool("foreground", false, "stay attached to the terminal after login (do not background)")
+	fromLogin := fs.Bool("from-login", false, "internal: read login handoff from stdin and serve")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -43,11 +58,23 @@ func cmdServe(args []string) error {
 	generated := false
 	var err error
 	if sec == "" {
+		if *fromLogin {
+			return fmt.Errorf("empty --secret (daemon child requires secret)")
+		}
 		sec, err = randomSecret()
 		if err != nil {
 			return err
 		}
 		generated = true
+	}
+
+	// Background child: session from stdin, then serve until signal/logout.
+	if *fromLogin {
+		sess, err := sessionFromHandoff(os.Stdin)
+		if err != nil {
+			return err
+		}
+		return runServer(sockPath, sec, sess)
 	}
 
 	httpClient := protocol.NewIDPClient(protocol.IDPRequestTimeout)
@@ -59,17 +86,35 @@ func cmdServe(args []string) error {
 	loginCtx, loginCancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer loginCancel()
 
-	sess, err := loginSession(loginCtx, httpClient, !*noBrowser)
+	handoff, err := deviceLoginHandoff(loginCtx, httpClient, !*noBrowser)
 	if err != nil {
 		return err
 	}
 
-	ln, err := server.ListenUnix(sockPath)
+	printServeReady(sockPath, sec, generated)
+
+	if *foreground {
+		sess, err := session.NewFromLogin(httpClient, handoffToLoginResult(handoff))
+		zeroHandoff(handoff)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, "Running in foreground (--foreground). Ctrl-C to stop.")
+		fmt.Fprintln(os.Stderr)
+		return runServer(sockPath, sec, sess)
+	}
+
+	pid, err := spawnBackgroundDaemon(sockPath, sec, handoff)
+	zeroHandoff(handoff)
 	if err != nil {
 		return err
 	}
-	defer server.RemoveUnixSocket(sockPath)
+	fmt.Fprintf(os.Stderr, "Daemon running in background (pid %d). Terminal is free.\n", pid)
+	fmt.Fprintln(os.Stderr, "  xai-oauth status | token | logout")
+	return nil
+}
 
+func printServeReady(sockPath, sec string, generated bool) {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Login successful. Serving local token API over Unix socket.")
 	fmt.Fprintf(os.Stderr, "  socket:  %s\n", sockPath)
@@ -81,12 +126,20 @@ func cmdServe(args []string) error {
 		fmt.Fprintln(os.Stderr, "  secret:  (from --secret or XAI_OAUTH_SECRET)")
 	}
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, "Commands (another terminal):")
+	fmt.Fprintln(os.Stderr, "Commands:")
 	fmt.Fprintf(os.Stderr, "  export XAI_OAUTH_SOCKET=%q\n", sockPath)
 	fmt.Fprintln(os.Stderr, "  xai-oauth status")
 	fmt.Fprintln(os.Stderr, "  xai-oauth token")
 	fmt.Fprintln(os.Stderr, "  xai-oauth logout")
 	fmt.Fprintln(os.Stderr)
+}
+
+func runServer(sockPath, sec string, sess *session.Session) error {
+	ln, err := server.ListenUnix(sockPath)
+	if err != nil {
+		return err
+	}
+	defer server.RemoveUnixSocket(sockPath)
 
 	const (
 		readHeader = 10 * time.Second
@@ -141,23 +194,150 @@ func cmdServe(args []string) error {
 	return nil
 }
 
-// loginSession runs device login and returns a Session as the sole credential
-// holder. LoginResult token fields are zeroed before return so Clear/logout
-// cannot leave a second copy in the serve stack frame.
-func loginSession(ctx context.Context, httpClient *http.Client, openBrowser bool) (*session.Session, error) {
+// spawnBackgroundDaemon re-execs this binary as a detached child that reads
+// the login handoff from stdin and serves on the Unix socket.
+func spawnBackgroundDaemon(sockPath, sec string, h *loginHandoff) (int, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return 0, fmt.Errorf("resolve executable: %w", err)
+	}
+
+	cmd := exec.Command(exe, "serve",
+		"--from-login",
+		"--socket", sockPath,
+		"--secret", sec,
+	)
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return 0, fmt.Errorf("daemon stdin: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		return 0, fmt.Errorf("start daemon: %w", err)
+	}
+	pid := cmd.Process.Pid
+
+	enc := json.NewEncoder(stdin)
+	if err := enc.Encode(h); err != nil {
+		_ = stdin.Close()
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		return 0, fmt.Errorf("write login handoff: %w", err)
+	}
+	if err := stdin.Close(); err != nil {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		return 0, fmt.Errorf("close login handoff: %w", err)
+	}
+
+	if err := waitDaemonReady(sockPath, sec, 10*time.Second); err != nil {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		return 0, err
+	}
+
+	// Detach: do not wait for the daemon; it outlives this CLI.
+	if err := cmd.Process.Release(); err != nil {
+		// Process is still running; Release failure is non-fatal on some platforms.
+		_ = err
+	}
+	return pid, nil
+}
+
+func waitDaemonReady(sockPath, sec string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var last error
+	for time.Now().Before(deadline) {
+		// Prefer a real client Health; also accept bare dial if client init fails.
+		c, err := client.New(client.Config{SocketPath: sockPath, Secret: sec})
+		if err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+			hErr := c.Health(ctx)
+			cancel()
+			if hErr == nil {
+				return nil
+			}
+			last = hErr
+		} else {
+			last = err
+		}
+		// Fallback: socket exists and accepts connections.
+		conn, err := net.DialTimeout("unix", sockPath, 100*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		last = err
+		time.Sleep(30 * time.Millisecond)
+	}
+	if last == nil {
+		last = fmt.Errorf("timeout")
+	}
+	return fmt.Errorf("daemon did not become ready: %w", last)
+}
+
+func deviceLoginHandoff(ctx context.Context, httpClient *http.Client, openBrowser bool) (*loginHandoff, error) {
 	result, err := protocol.DeviceLogin(ctx, httpClient, openBrowser, func(s string) {
 		fmt.Fprintln(os.Stderr, s)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("login: %w", err)
 	}
-	sess, err := session.NewFromLogin(httpClient, result)
-	// Drop OAuth material from the login result regardless of NewFromLogin outcome.
+	h := &loginHandoff{
+		AccessToken:   result.Tokens.AccessToken,
+		RefreshToken:  result.Tokens.RefreshToken,
+		TokenEndpoint: result.Discovery.TokenEndpoint,
+		ExpiresIn:     result.Tokens.ExpiresIn,
+	}
+	// Drop OAuth material from the login result immediately.
 	result.Tokens = protocol.TokenResponse{}
+	if h.AccessToken == "" || h.RefreshToken == "" {
+		return nil, fmt.Errorf("login: missing access or refresh token")
+	}
+	if err := protocol.ValidateXAIURL(h.TokenEndpoint, "token_endpoint"); err != nil {
+		return nil, err
+	}
+	return h, nil
+}
+
+func handoffToLoginResult(h *loginHandoff) *protocol.LoginResult {
+	return &protocol.LoginResult{
+		Tokens: protocol.TokenResponse{
+			AccessToken:  h.AccessToken,
+			RefreshToken: h.RefreshToken,
+			ExpiresIn:    h.ExpiresIn,
+			TokenType:    "Bearer",
+		},
+		Discovery: protocol.Discovery{TokenEndpoint: h.TokenEndpoint},
+	}
+}
+
+func sessionFromHandoff(r io.Reader) (*session.Session, error) {
+	var h loginHandoff
+	dec := json.NewDecoder(io.LimitReader(r, 1<<20))
+	if err := dec.Decode(&h); err != nil {
+		return nil, fmt.Errorf("read login handoff: %w", err)
+	}
+	sess, err := session.NewFromLogin(protocol.NewIDPClient(protocol.IDPRequestTimeout), handoffToLoginResult(&h))
+	zeroHandoff(&h)
 	if err != nil {
 		return nil, err
 	}
 	return sess, nil
+}
+
+func zeroHandoff(h *loginHandoff) {
+	if h == nil {
+		return
+	}
+	h.AccessToken = ""
+	h.RefreshToken = ""
+	h.TokenEndpoint = ""
+	h.ExpiresIn = 0
 }
 
 func randomSecret() (string, error) {

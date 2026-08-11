@@ -48,14 +48,15 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, `xai-oauth — local xAI OAuth2 personal token daemon (Unix socket + HTTP)
 
 Usage:
-  xai-oauth serve   [flags]   device login then serve on a Unix socket
+  xai-oauth serve   [flags]   device login, then daemonize (background by default)
   xai-oauth status  [flags]   query running daemon (requires secret)
   xai-oauth token   [flags]   print access_token (requires secret)
   xai-oauth logout  [flags]   clear session and stop daemon (requires secret)
   xai-oauth version
 
-Credentials live only in the serve process (memory). Control commands talk to
-that process over HTTP-on-Unix-socket. Restart serve after logout/reauth.
+Credentials live only in the serve process (memory). After successful login,
+serve detaches so the terminal is free. Control commands talk over
+HTTP-on-Unix-socket. Restart serve after logout/reauth.
 
 Flags (per command):
   --socket  path (default: $XDG_RUNTIME_DIR/…, else ~/.xai-oauth/…, else $TMPDIR/…)
@@ -63,6 +64,7 @@ Flags (per command):
   --secret  local API secret (env XAI_OAUTH_SECRET; serve generates if empty;
             required for status/token/logout)
   --no-browser   serve: do not open the device-login browser (default: try open)
+  --foreground   serve: stay in the terminal after login (do not background)
 
 SDK: github.com/fun7257/xai-oauth/client
   c, _ := client.New(client.Config{Secret: "..."})

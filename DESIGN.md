@@ -64,7 +64,8 @@ xai-oauth serve     ──设备码──► 内存 Session ──HTTP/UDS──
 ### 3.0 CLI
 
 ```text
-xai-oauth serve   [--socket] [--secret] [--no-browser]   # 设备码登录 + 常驻
+xai-oauth serve   [--socket] [--secret] [--no-browser] [--foreground]
+                  # 设备码登录；默认 re-exec 后台 daemon，--foreground 保持前台
 xai-oauth status  [--socket] [--secret]                  # 查 daemon
 xai-oauth token   [--socket] [--secret]                  # 打印 access_token
 xai-oauth logout  [--socket] [--secret]                  # 清会话并停 daemon
@@ -187,6 +188,7 @@ CLI 的 status/token/logout **必须**提供 secret。
 | flag | `--socket` | `$XDG_RUNTIME_DIR/…` → `~/.xai-oauth/…` → `$TMPDIR/…`（见 REFERENCE §2.3） |
 | flag | `--secret` | serve：空 → env → 生成；其它命令：空 → env，**缺则报错** |
 | flag | `--no-browser` | false（默认尝试打开浏览器） |
+| flag | `--foreground` | false（登录成功后默认后台 re-exec daemon） |
 | env | `XAI_OAUTH_SOCKET` | 覆盖默认 socket 路径 |
 | env | `XAI_OAUTH_SECRET` | 本机 API secret |
 | env | 标准 `HTTP(S)_PROXY` 等 | 仅出站 IdP；**不**用于 UDS |

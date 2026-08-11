@@ -55,15 +55,16 @@ make build                 # → ./xai-oauth
 ## 使用
 
 ```bash
-# 终端 1
+# 设备码登录成功后自动挂后台
 ./xai-oauth serve
 # 或: ./xai-oauth serve --no-browser
+# 调试用前台: ./xai-oauth serve --foreground
 export XAI_OAUTH_SECRET='…'   # 若 serve 打印了生成的 secret，请保存
 
-# 终端 2
+# 同一终端或另一终端控制
 ./xai-oauth status
 ./xai-oauth token
-./xai-oauth logout
+./xai-oauth logout             # 清会话并停后台 daemon
 ```
 
 默认 socket（完整顺序见 [docs/REFERENCE.md](docs/REFERENCE.md) §2.3）：
@@ -75,7 +76,7 @@ export XAI_OAUTH_SECRET='…'   # 若 serve 打印了生成的 secret，请保�
 
 | 命令 | 作用 |
 |------|------|
-| `serve` | 设备码登录 + 内存会话 + UDS HTTP |
+| `serve` | 设备码登录后**自动后台** daemon（UDS HTTP）；`--foreground` 保持前台 |
 | `status` / `token` / `logout` | 控制面（**必须** secret） |
 | `version` | 版本 |
 

@@ -47,6 +47,8 @@ xai-oauth <command> [flags]
 | `--socket` | all control + serve | `XAI_OAUTH_SOCKET` | See §2.3 | Unix socket path |
 | `--secret` | all control + serve | `XAI_OAUTH_SECRET` | serve: random if empty; others: **error if empty** | Local API secret |
 | `--no-browser` | `serve` only | — | `false` | If set, do not auto-open browser; still print URL + code |
+| `--foreground` | `serve` only | — | `false` | Stay attached after login (do not background) |
+| `--from-login` | `serve` only (internal) | — | — | Child mode: read login handoff from stdin; not for operators |
 
 ### 2.3 Default socket path
 
@@ -67,9 +69,13 @@ On shutdown, the path is removed best-effort.
 
 1. Resolve scope (fixed constant; see §6).  
 2. Device-code OAuth against `auth.x.ai` (may open browser unless `--no-browser`).  
-3. Keep access + refresh tokens in memory.  
-4. Listen HTTP on the Unix socket.  
-5. Exit on SIGINT/SIGTERM, failed serve, or successful `POST /logout`.
+3. Print socket / secret (if generated) to stderr.  
+4. **Default:** re-exec a detached daemon child (`setsid`), pass tokens once via
+   stdin JSON handoff (never written to disk); parent waits until `/health` is up,
+   prints pid, then **exits 0** so the terminal is free.  
+5. **`--foreground`:** keep tokens in this process and serve until stop (no re-exec).  
+6. Daemon listens HTTP on the Unix socket; holds access + refresh tokens in memory.  
+7. Daemon exits on SIGINT/SIGTERM, failed serve, or successful `POST /logout`.
 
 ### 2.5 `status` output (typical)
 
