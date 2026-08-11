@@ -1,0 +1,86 @@
+# Build Linux / macOS / Windows binaries on version tags (v*).
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Test and release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check
+        run: make check
+
+      - name: Build release assets
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # Three platforms: Linux, macOS, Windows (amd64 + common arm64 where useful).
+          targets="
+            linux/amd64
+            linux/arm64
+            darwin/amd64
+            darwin/arm64
+            windows/amd64
+          "
+          for t in $targets; do
+            GOOS=${t%/*}
+            GOARCH=${t#*/}
+            ext=""
+            archive_ext="tar.gz"
+            if [ "$GOOS" = "windows" ]; then
+              ext=".exe"
+              archive_ext="zip"
+            fi
+            out="dist/xai-oauth_${VERSION}_${GOOS}_${GOARCH}${ext}"
+            echo "Building $out"
+            GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 \
+              go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "$out" ./cmd/xai-oauth
+            (
+              cd dist
+              base="xai-oauth_${VERSION}_${GOOS}_${GOARCH}"
+              if [ "$archive_ext" = "zip" ]; then
+                zip -q "${base}.zip" "$(basename "$out")"
+              else
+                tar -czf "${base}.tar.gz" "$(basename "$out")"
+              fi
+              rm -f "$(basename "$out")"
+            )
+          done
+          ls -la dist
+          # checksums over archives only
+          (
+            cd dist
+            sha256sum *.tar.gz *.zip > SHA256SUMS
+          )
+          cat dist/SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

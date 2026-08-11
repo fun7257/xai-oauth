@@ -5,7 +5,8 @@ import (
 	"os"
 )
 
-const version = "0.1.0"
+// version is overridden at link time via -X main.version=… (release tags).
+var version = "dev"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {

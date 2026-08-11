@@ -62,6 +62,9 @@ make build                 # → ./xai-oauth
 # or: make install         # → ~/.local/bin/xai-oauth
 ```
 
+Tagged releases (`v*`) publish Linux / macOS / Windows binaries via GitHub Actions
+(see [.github/workflows/release.yml](.github/workflows/release.yml)).
+
 ## Usage
 
 ```bash

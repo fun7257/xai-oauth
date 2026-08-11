@@ -47,6 +47,9 @@ make build                 # → ./xai-oauth
 # 或: make install         # → ~/.local/bin/xai-oauth
 ```
 
+打 `v*` tag 后，GitHub Actions 会构建 Linux / macOS / Windows 二进制并发布
+（见 [.github/workflows/release.yml](.github/workflows/release.yml)）。
+
 ## 使用
 
 ```bash
