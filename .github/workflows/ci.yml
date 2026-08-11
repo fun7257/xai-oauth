@@ -1,0 +1,100 @@
+# Continuous integration: unit tests + cross-build smoke.
+# Also runs on a daily schedule so the main branch stays green without a push.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Daily 06:00 UTC — catch toolchain / runner drift on main.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Unix-only project (//go:build unix); no Windows runners.
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check (fmt + vet + test)
+        run: make check
+
+      - name: Race detector
+        run: make test-race
+
+      - name: Build host binary
+        run: make build VERSION=ci
+
+  build:
+    name: Cross-build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Cross-compile Linux / macOS
+        env:
+          VERSION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          targets="
+            linux/amd64
+            linux/arm64
+            darwin/amd64
+            darwin/arm64
+          "
+          for t in $targets; do
+            GOOS=${t%/*}
+            GOARCH=${t#*/}
+            out="dist/xai-oauth_${GOOS}_${GOARCH}"
+            echo "Building $out"
+            GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 \
+              go build -trimpath -ldflags "-s -w -X main.version=ci-${VERSION:0:7}" \
+              -o "$out" ./cmd/xai-oauth
+          done
+          ls -la dist
+          (
+            cd dist
+            sha256sum xai-oauth_* > SHA256SUMS
+          )
+          cat dist/SHA256SUMS
+
+      - name: Upload build artifacts
+        # Keep scheduled / manual runs' binaries for a few days; PR/push still
+        # smoke-build above without retaining artifacts to save storage.
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: xai-oauth-ci-${{ github.run_id }}
+          path: |
+            dist/xai-oauth_*
+            dist/SHA256SUMS
+          retention-days: 7

@@ -188,6 +188,15 @@ make test-race
 make cover
 ```
 
+### CI
+
+| Workflow | Trigger | What it does |
+|----------|---------|----------------|
+| [CI](.github/workflows/ci.yml) | push/PR to `main`, **daily schedule**, manual | `make check` + race on Ubuntu & macOS; cross-build Linux/macOS (scheduled/manual uploads artifacts) |
+| [Release](.github/workflows/release.yml) | tag `v*` | check + publish release binaries |
+
+Windows is not tested or built.
+
 ## License
 
 [MIT](LICENSE)

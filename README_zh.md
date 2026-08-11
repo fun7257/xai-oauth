@@ -134,6 +134,15 @@ make test-race
 make cover
 ```
 
+### CI
+
+| Workflow | 触发 | 内容 |
+|----------|------|------|
+| [CI](.github/workflows/ci.yml) | `main` 的 push/PR、**每日定时**、手动 | Ubuntu/macOS 上 `make check` + race；交叉编译 Linux/macOS（定时/手动会上传 artifact） |
+| [Release](.github/workflows/release.yml) | tag `v*` | check + 发布二进制 |
+
+不构建、不测试 Windows。
+
 ## 许可证
 
 [MIT](LICENSE)
