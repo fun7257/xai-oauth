@@ -8,7 +8,8 @@ call `https://api.x.ai` themselves with that bearer.
 > **Not affiliated with xAI.** Unofficial, community-maintained software.  
 > **For your machine only** — not a multi-tenant or public token service.  
 > License: [MIT](LICENSE). Security model: [SECURITY.md](SECURITY.md).  
-> Design notes: [DESIGN.md](DESIGN.md). Chinese: [README_zh.md](README_zh.md).
+> Design: [DESIGN.md](DESIGN.md). Reference: [docs/REFERENCE.md](docs/REFERENCE.md).  
+> Chinese: [README_zh.md](README_zh.md).
 
 ## Important: security & scope
 

@@ -6,7 +6,8 @@
 > **与 xAI 无隶属关系。** 非官方、社区维护软件。  
 > **仅限本机** — 不是多租户或公网 token 服务。  
 > 许可证：[MIT](LICENSE)。安全模型：[SECURITY.md](SECURITY.md)。  
-> 设计说明：[DESIGN.md](DESIGN.md)。English: [README.md](README.md)。
+> 设计：[DESIGN.md](DESIGN.md)。引用手册：[docs/REFERENCE.md](docs/REFERENCE.md)。  
+> English: [README.md](README.md)。
 
 ## 安全与范围
 

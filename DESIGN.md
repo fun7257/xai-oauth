@@ -6,7 +6,8 @@
 
 **状态：** 实现中  
 **许可证：** [MIT](LICENSE)  
-**对外说明：** [README.md](README.md) · [SECURITY.md](SECURITY.md)  
+**对外说明：** [README.md](README.md) · [SECURITY.md](SECURITY.md) · [docs/REFERENCE.md](docs/REFERENCE.md)  
+
 **参考：** [xai-proxy](https://github.com/fun7257/xai-proxy)（协议布局）、grok-build 个人 OAuth2 默认 scope；  
 设备码/refresh 社区流程脉络参见 xai-proxy 对 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的说明。  
 本项目独立，与 xAI / Hermes / Nous **无隶属关系**。
