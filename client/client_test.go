@@ -13,9 +13,23 @@ import (
 	"testing"
 )
 
+// shortTempDir keeps AF_UNIX paths short (macOS sun_path ~104 bytes).
+func shortTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "xo-")
+	if err != nil {
+		dir, err = os.MkdirTemp("", "xo-")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
 func startUnixDaemon(t *testing.T, secret string, mux *http.ServeMux) string {
 	t.Helper()
-	sock := filepath.Join(t.TempDir(), "daemon.sock")
+	sock := filepath.Join(shortTempDir(t), "s.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
 		t.Fatal(err)

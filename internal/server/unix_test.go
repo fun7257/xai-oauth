@@ -10,9 +10,26 @@ import (
 	"testing"
 )
 
+// shortTempDir puts the test tree under /tmp with a short prefix.
+// macOS AF_UNIX sun_path is ~104 bytes; t.TempDir() under /var/folders often
+// exceeds that when nested (bind: invalid argument).
+func shortTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "xo-")
+	if err != nil {
+		// Fall back if /tmp is unavailable (unusual).
+		dir, err = os.MkdirTemp("", "xo-")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
 func TestListenUnixRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	sock := filepath.Join(dir, "daemon.sock")
+	dir := shortTempDir(t)
+	sock := filepath.Join(dir, "s.sock")
 
 	ln, err := ListenUnix(sock)
 	if err != nil {
@@ -65,7 +82,7 @@ func TestListenUnixRoundTrip(t *testing.T) {
 }
 
 func TestListenUnixRejectsNonSocketFile(t *testing.T) {
-	dir := t.TempDir()
+	dir := shortTempDir(t)
 	path := filepath.Join(dir, "notasock")
 	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
@@ -77,12 +94,12 @@ func TestListenUnixRejectsNonSocketFile(t *testing.T) {
 
 func TestListenUnixTightensParentDir(t *testing.T) {
 	// Nested dir starts loose; ListenUnix must chmod to 0700 and still bind.
-	parent := t.TempDir()
-	dir := filepath.Join(parent, "xai-oauth")
+	parent := shortTempDir(t)
+	dir := filepath.Join(parent, "d")
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	sock := filepath.Join(dir, "daemon.sock")
+	sock := filepath.Join(dir, "s.sock")
 	ln, err := ListenUnix(sock)
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +121,7 @@ func TestListenUnixTightensParentDir(t *testing.T) {
 func TestEnsurePrivateDirRejectsWrongOwner(t *testing.T) {
 	// Without root we cannot create a foreign-owned dir; exercise the Stat_t
 	// path with a normal private dir and a non-directory path.
-	dir := t.TempDir()
+	dir := shortTempDir(t)
 	if err := ensurePrivateDir(dir); err != nil {
 		t.Fatalf("own temp dir: %v", err)
 	}

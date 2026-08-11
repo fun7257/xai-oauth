@@ -5,6 +5,7 @@ package client_test
 import (
 	"context"
 	"net/http"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -17,7 +18,13 @@ import (
 
 // End-to-end: real ListenUnix + Server.Handler + client over UDS (shipped path).
 func TestClientOverUnixSocket_E2E(t *testing.T) {
-	sock := filepath.Join(t.TempDir(), "daemon.sock")
+	// Short path: macOS AF_UNIX sun_path is ~104 bytes.
+	dir, err := os.MkdirTemp("/tmp", "xo-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	sock := filepath.Join(dir, "s.sock")
 	const secret = "e2e-secret"
 
 	sess, err := session.NewFromLogin(nil, &protocol.LoginResult{
