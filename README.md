@@ -16,8 +16,8 @@ call `https://api.x.ai` themselves with that bearer.
 | Do | Don’t |
 |----|--------|
 | Keep the daemon on a **user-only Unix socket** (default `0600`) | Treat this as a shared or network service |
-| Protect the **local secret** (`XAI_OAUTH_SECRET`) | Commit secrets, paste them into public issues |
-| Treat OAuth access/refresh tokens as secrets | Log full tokens |
+| Prefer **`XAI_OAUTH_SECRET` env** (not `--secret` argv) | Put secrets on the command line in CI/shared hosts |
+| Treat OAuth access/refresh tokens as secrets | Log full tokens or leave `token` stdout in world-readable CI logs |
 | Restart `serve` after logout / reauth | Expect tokens to survive process restart |
 
 Anyone who can open the socket **and** present the local secret can obtain
@@ -78,12 +78,12 @@ export XAI_OAUTH_SECRET='…'
 ./xai-oauth logout         # clears memory and stops serve
 ```
 
-Default socket:
+Default socket (full order: [docs/REFERENCE.md](docs/REFERENCE.md) §2.3):
 
-- `$XDG_RUNTIME_DIR/xai-oauth/daemon.sock`, or
-- `~/.xai-oauth/daemon.sock`
-
-Override with `--socket` / `XAI_OAUTH_SOCKET`.
+1. `--socket` / `XAI_OAUTH_SOCKET`
+2. `$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` (if set)
+3. `~/.xai-oauth/daemon.sock`
+4. `$TMPDIR/xai-oauth/daemon.sock` only if home is unavailable (prefer setting home or `XAI_OAUTH_SOCKET`)
 
 ### CLI commands
 
@@ -166,6 +166,10 @@ configurable via env.
 Device login uses a **public** client id (see `internal/protocol/constants.go`).
 This is **not** a private API key, but upstream policy may still restrict or
 revoke it. This project does **not** claim official approval by xAI.
+
+## Reference
+
+Full command / HTTP / SDK / environment tables: **[docs/REFERENCE.md](docs/REFERENCE.md)**.
 
 ## Development
 

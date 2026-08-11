@@ -48,12 +48,7 @@ func cmdServe(args []string) error {
 		generated = true
 	}
 
-	httpClient := &http.Client{
-		Timeout: protocol.IDPRequestTimeout,
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-		},
-	}
+	httpClient := protocol.NewIDPClient(protocol.IDPRequestTimeout)
 
 	fmt.Fprintln(os.Stderr, "xai-oauth serve — xAI OAuth2 personal (device login)")
 	fmt.Fprintf(os.Stderr, "  scope:  %s\n", protocol.Scope)

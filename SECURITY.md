@@ -68,14 +68,25 @@ the Go SDK still sends the secret on every call.
 
 ## Local secret
 
-- Prefer setting `XAI_OAUTH_SECRET` yourself for stable automation.
+- Prefer **`XAI_OAUTH_SECRET` in the environment** (or a file you source) over
+  `--secret` on the command line. Values in argv are visible to same-UID peers
+  (`ps`, `/proc/*/cmdline`) and some audit agents.
 - If unset, `serve` generates a random secret and prints it **once** to stderr —
-  treat it like a password; it is not written to disk by this tool.
+  treat it like a password; it is not written to disk by this tool. Stderr may
+  still enter terminal scrollback or session recorders.
+- `xai-oauth token` prints a full OAuth **access token** on stdout — treat that
+  stream as secret (shell history, CI logs, screen shares).
 - Do not commit secrets or put them in public bug reports.
 
 ## Unix socket hygiene
 
-- Default paths under `$XDG_RUNTIME_DIR` or `~/.xai-oauth` are per-user.
+- Default path resolution (same as the SDK):
+  1. `XAI_OAUTH_SOCKET` / `--socket`
+  2. `$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` if set
+  3. `~/.xai-oauth/daemon.sock`
+  4. `$TMPDIR/xai-oauth/daemon.sock` only if home is unavailable (weaker
+     multi-user namespace; prefer setting home or `XAI_OAUTH_SOCKET`)
+- Socket file mode `0600`, parent dir `0700` after bind.
 - Same-UID processes can still open a `0600` socket; the **secret** is the
   second control. Do not run untrusted code as your user while `serve` is up.
 - Stale sockets from crashed processes are removed on next successful `serve`
@@ -92,9 +103,27 @@ used for the local Unix socket.
 If you believe you found a security issue **in this software** (not in xAI’s
 upstream API):
 
-1. Prefer a private report (e.g. GitHub Security Advisory when the repo is public).
+1. Prefer a **private** channel first:
+   - Enable and use **GitHub private vulnerability reporting** / Security
+     Advisories when the repository is on GitHub (recommended before making
+     the repo public).
+   - If that is not yet configured, contact the maintainers privately by the
+     means published on the repository (do not open a public issue with
+     secrets).
 2. Do **not** open a public issue that includes live tokens, refresh tokens,
    local secrets, or full captures containing credentials.
+
+## Residual operator risks (before/after public release)
+
+Keep these explicit when publishing or operating:
+
+| Risk | Note |
+|------|------|
+| Same-UID access | Socket `0600` + secret; untrusted same-user code can still steal tokens |
+| Memory-only session | Process dump / debugger can see AT/RT; restart clears login |
+| `token` stdout / generated secret stderr | Easy to leak via logs, history, recorders |
+| Public device client id | Upstream may change allowlists/ToS; not an official xAI product |
+| No multi-tenant deployment | Not a shared gateway |
 
 ## Residual policy risk
 

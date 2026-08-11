@@ -188,7 +188,7 @@ c, err := client.New(client.Config{
 
 Fixed client timeout: **30s**. No injectable `http.Client`, no TCP `BaseURL`.
 
-### 4.2 Methods
+### 4.2 Methods (`*Client`)
 
 | Method | HTTP | Returns |
 |--------|------|---------|
@@ -198,7 +198,13 @@ Fixed client timeout: **30s**. No injectable `http.Client`, no TCP `BaseURL`.
 | `Health(ctx) error` | `GET /health` | nil if alive |
 | `Logout(ctx) error` | `POST /logout` | nil on success |
 | `SocketPath() string` | — | configured socket path |
-| `DefaultSocketPath() string` | — | package helper for default path |
+
+### 4.2.1 Package helpers
+
+| Function | Returns |
+|----------|---------|
+| `New(Config) (*Client, error)` | client (secret required) |
+| `DefaultSocketPath() string` | default UDS path (see §2.3) |
 
 ### 4.3 `client.Status` struct
 

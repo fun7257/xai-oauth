@@ -26,7 +26,7 @@ func Refresh(ctx context.Context, client *http.Client, tokenEndpoint, refreshTok
 		return nil, newError("discovery_invalid", "token_endpoint failed validation", "reauth")
 	}
 	if client == nil {
-		client = &http.Client{Timeout: IDPRequestTimeout}
+		client = defaultIDPClient()
 	}
 
 	form := url.Values{}

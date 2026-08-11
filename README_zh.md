@@ -14,8 +14,8 @@
 | 应该 | 不要 |
 |------|------|
 | 使用默认 **仅属主可访问** 的 Unix socket（0600） | 当成共享/公网服务 |
-| 保护 **本机 secret**（`XAI_OAUTH_SECRET`） | 提交密钥、贴到公开 issue |
-| 将 OAuth access/refresh 当秘密 | 打印完整 token |
+| 优先用环境变量 **`XAI_OAUTH_SECRET`**（少用 `--secret` 命令行） | 在 CI/共享机上把 secret 写进 argv |
+| 将 OAuth access/refresh 当秘密 | 完整 token 进日志；`token` 的 stdout 也当秘密 |
 | logout / reauth 后重新 `serve` | 指望进程重启后仍登录 |
 
 能打开 socket **且** 持有本机 secret 的人，可以拿到 **你的** access_token 并消耗 **你的** 额度。
@@ -60,8 +60,12 @@ export XAI_OAUTH_SECRET='…'   # 若 serve 打印了生成的 secret，请保�
 ./xai-oauth logout
 ```
 
-默认 socket：`$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` 或 `~/.xai-oauth/daemon.sock`。  
-可用 `--socket` / `XAI_OAUTH_SOCKET` 覆盖。
+默认 socket（完整顺序见 [docs/REFERENCE.md](docs/REFERENCE.md) §2.3）：
+
+1. `--socket` / `XAI_OAUTH_SOCKET`
+2. `$XDG_RUNTIME_DIR/xai-oauth/daemon.sock`（若已设置）
+3. `~/.xai-oauth/daemon.sock`
+4. 若无法解析 home：`$TMPDIR/xai-oauth/daemon.sock`（多用户主机上较弱，请显式设路径）
 
 | 命令 | 作用 |
 |------|------|
@@ -109,6 +113,10 @@ OAuth **scope 写死在代码中**，不可通过 env 配置。
 
 设备登录使用公开 client id（见 `internal/protocol/constants.go`）。  
 这**不是**私钥式 API key，但上游策略仍可能限制或吊销。本项目**不声称**获得 xAI 官方背书。
+
+## 引用手册
+
+命令、HTTP、SDK、环境变量完整表：**[docs/REFERENCE.md](docs/REFERENCE.md)**。
 
 ## 开发
 

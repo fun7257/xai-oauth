@@ -4,7 +4,8 @@
 > `status` / `token` / `logout` 与 SDK 通过 **Unix socket 上的 HTTP** 操作该进程；  
 > 客户端拿到 `access_token` 后直连 `api.x.ai`。
 
-**状态：** 实现中  
+**状态：** 已实现（路线 B：本地单操作者可用）  
+
 **许可证：** [MIT](LICENSE)  
 **对外说明：** [README.md](README.md) · [SECURITY.md](SECURITY.md) · [docs/REFERENCE.md](docs/REFERENCE.md)  
 

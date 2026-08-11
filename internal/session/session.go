@@ -46,7 +46,7 @@ type Session struct {
 // NewFromLogin builds a ready session from a successful device login.
 func NewFromLogin(client *http.Client, result *protocol.LoginResult) (*Session, error) {
 	if client == nil {
-		client = &http.Client{Timeout: protocol.IDPRequestTimeout}
+		client = protocol.NewIDPClient(protocol.IDPRequestTimeout)
 	}
 	if result == nil {
 		return nil, errors.New("nil login result")

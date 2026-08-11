@@ -36,7 +36,7 @@ type TokenResponse struct {
 // RequestDeviceCode starts the device-code flow.
 func RequestDeviceCode(ctx context.Context, client *http.Client) (*DeviceCodeResponse, error) {
 	if client == nil {
-		client = &http.Client{Timeout: IDPRequestTimeout}
+		client = defaultIDPClient()
 	}
 	form := url.Values{}
 	form.Set("client_id", ClientID)
@@ -84,7 +84,7 @@ func RequestDeviceCode(ctx context.Context, client *http.Client) (*DeviceCodeRes
 // PollDeviceToken polls until the user approves or the code expires.
 func PollDeviceToken(ctx context.Context, client *http.Client, tokenEndpoint, deviceCode string, expiresIn, interval int) (*TokenResponse, error) {
 	if client == nil {
-		client = &http.Client{Timeout: IDPRequestTimeout}
+		client = defaultIDPClient()
 	}
 	if err := ValidateXAIURL(tokenEndpoint, "token_endpoint"); err != nil {
 		return nil, newError("discovery_invalid", err.Error(), "reauth")
@@ -233,7 +233,12 @@ func tryOpenBrowser(u string) bool {
 	default:
 		return false
 	}
-	return cmd.Start() == nil
+	if err := cmd.Start(); err != nil {
+		return false
+	}
+	// Reap the helper so Start does not leave an unreaped child.
+	go func() { _ = cmd.Wait() }()
+	return true
 }
 
 func max(a, b int) int {
