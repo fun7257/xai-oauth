@@ -102,7 +102,9 @@ the Go SDK still sends the secret on every call.
 - Same-UID processes can still open a `0600` socket; the **secret** is the
   second control. Do not run untrusted code as your user while `serve` is up.
 - Stale sockets from crashed processes are removed on next successful `serve`
-  bind when the path is a leftover socket file.
+  bind when the path is a leftover socket file. The path is connect-probed
+  first: if a live process still accepts on it, `serve` refuses instead of
+  unlinking a running daemon's socket.
 
 ## Outbound proxy
 

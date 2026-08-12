@@ -64,7 +64,9 @@ Resolution order for socket path:
 
 On `serve` bind: parent directory must be mode **0700** **and owned by the current UID**
 (else listen fails — refuse foreign/group-writable parents, especially under `$TMPDIR`);
-socket file mode **0600**. Stale socket files at the path are removed before listen.
+socket file mode **0600**. An existing socket file at the path is first probed
+with a connect: if something still accepts, `serve` refuses (a live daemon is
+never silently orphaned); only genuinely stale leftovers are removed.
 On shutdown, the path is removed best-effort.
 
 ### 2.4 `serve` lifecycle
@@ -76,7 +78,8 @@ On shutdown, the path is removed best-effort.
 4. Print socket / secret (if generated) to stderr (**not** “serving” yet).  
 5. **Default:** re-exec a detached daemon child (`setsid`, stdout/stderr →
    `/dev/null`); pass **secret + tokens** once via stdin JSON handoff (never on
-   child argv, never on disk); parent waits until secret-authenticated
+   child argv, never on disk; `XAI_OAUTH_SECRET` is stripped from the child's
+   environment); parent waits until secret-authenticated
    `GET /status` reports `state=ready`, prints pid, then **exits 0**.  
 6. **`--foreground`:** keep tokens in this process and serve until stop (no re-exec).  
 7. Daemon listens HTTP on the Unix socket; holds access + refresh tokens in memory.  
@@ -122,6 +125,12 @@ Synthetic URL origin used by the Go SDK: `http://xai-oauth.local`
 |--------|------|--------------------------------|---------------------|
 | `GET` | `/health` | No | `{"ok":true}` |
 | `GET` | `/ready` | No | `{"ready":true}` or `{"ready":false,"state":"..."}` + HTTP 503 |
+
+`/ready` is true when `state=ready` **and** a `GET /token` can plausibly
+succeed. When the access token is past expiry and the last refresh attempt
+failed, `/ready` returns 503 with `state="degraded"` (self-heals after the
+next successful refresh); sticky failures report `reauth_required` /
+`tier_denied`.
 | `GET` | `/status` | **Yes** | See §3.3 |
 | `GET` | `/token` | **Yes** | `{"access_token":"...","token_type":"Bearer"}` |
 | `POST` | `/logout` | **Yes** | `{"ok":true,"logged_out":true}` then process exit |
@@ -145,6 +154,7 @@ The Go SDK **always** sends the secret on every request, including `/health` and
 | `state` | string | `ready` \| `reauth_required` \| `tier_denied` |
 | `has_expiry` | bool | Whether an absolute expiry is known |
 | `expires_at` | string | RFC3339 UTC when `has_expiry` |
+| `token_valid` | bool | Held access token is hard-valid right now (false may still refresh fine) |
 | `last_error` | string | Short non-sensitive code/message; no IdP bodies |
 
 ### 3.4 `/token` semantics
@@ -225,10 +235,11 @@ Fixed client timeout: **30s**. No injectable `http.Client`, no TCP `BaseURL`.
 
 ```go
 type Status struct {
-    State     string // ready | reauth_required | tier_denied
-    HasExpiry bool
-    ExpiresAt string // RFC3339
-    LastError string
+    State      string // ready | reauth_required | tier_denied
+    HasExpiry  bool
+    ExpiresAt  string // RFC3339
+    TokenValid bool   // access token hard-valid right now
+    LastError  string
 }
 ```
 
@@ -286,7 +297,9 @@ Fixed personal device-client parameters (`internal/protocol/constants.go`):
 | Token | discovery `token_endpoint` (https; host must be true `x.ai` subdomain) |
 
 IdP timeouts: **20s** per discovery/device/refresh HTTP call.  
-Refresh skew: **5 minutes** before access expiry.
+Refresh skew: **5 minutes** before access expiry.  
+Device polling: total window capped at **30 minutes**, poll interval clamped
+to **1–30s** (defensive bounds on IdP-provided `expires_in` / `interval`).
 
 Public client id is **not** a confidential secret; upstream policy may still change allowlists or terms. See [README.md](../README.md) and [SECURITY.md](../SECURITY.md).
 

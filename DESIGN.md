@@ -79,8 +79,8 @@ xai-oauth version
 | 方法 | 路径 | 鉴权 | 说明 |
 |------|------|------|------|
 | GET | `/health` | 无 | 进程存活 |
-| GET | `/ready` | 无 | state==ready |
-| GET | `/status` | secret | state / expires_at / last_error |
+| GET | `/ready` | 无 | state==ready 且 token 可用（refresh 失败且 AT 过期 → 503 `degraded`） |
+| GET | `/status` | secret | state / expires_at / token_valid / last_error |
 | GET | `/token` | secret | 可用 access_token |
 | POST | `/logout` | secret | 清内存；serve 随后退出 |
 
@@ -144,7 +144,7 @@ workspaces:read workspaces:write
 2. device/code → 校验 user_code（≤64, `[A-Za-z0-9-]`）与 verification URI（https、x.ai 真子域、≤2048）后打印/开浏览器（`--no-browser` 可关）  
 
 
-3. 轮询换 token（必须含 access + refresh）  
+3. 轮询换 token（必须含 access + refresh；轮询窗口 ≤30 分钟、间隔钳制 1–30s）  
 4. 写入内存 Session，state=ready  
 5. 监听 HTTP  
 
@@ -171,8 +171,8 @@ workspaces:read workspaces:write
 | 路径 | 鉴权 | 说明 |
 |------|------|------|
 | GET /health | 无* | 存活（*服务端不强制 secret；SDK 仍带 secret） |
-| GET /ready | 无* | state==ready |
-| GET /status | secret | state / expires_at / last_error |
+| GET /ready | 无* | state==ready 且 token 可用（降级时 503 `degraded`） |
+| GET /status | secret | state / expires_at / token_valid / last_error |
 | GET /token | secret | 可用 AT |
 | POST /logout | secret | 清内存；serve 随后退出 |
 
