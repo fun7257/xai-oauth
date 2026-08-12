@@ -34,7 +34,7 @@ xai-oauth <command> [flags]
 
 | Command | Description | Requires running `serve` | Requires secret |
 |---------|-------------|---------------------------|-----------------|
-| `serve` | Device-code login, then serve HTTP on a Unix socket | — | Optional (generated if empty) |
+| `serve` | Converge to a healthy daemon: take over a running daemon's session (no re-login), else device-code login | — | Optional when nothing runs (generated); **required** to take over |
 | `status` | Print daemon health / ready / session state | Yes | **Yes** |
 | `token` | Print one line: usable `access_token` | Yes | **Yes** |
 | `logout` | Clear memory session and stop daemon | Yes | **Yes** |
@@ -77,9 +77,19 @@ leftovers are removed. On shutdown, the path is removed best-effort.
 
 ### 2.4 `serve` lifecycle
 
-1. Resolve scope (fixed constant; see §6).  
-2. If the socket already answers (any healthy listener), refuse and ask for
-   `logout` first (avoids orphaning a previous token-holding process).  
+1. Probe the socket. Decision matrix when a daemon already answers:
+   - secret matches + session **ready** → **takeover**: `POST /handoff`
+     transfers the in-memory session (access + refresh token) to this
+     process; the old daemon drains and exits; **no device login, no
+     browser**. This is the zero-reauth upgrade path.
+   - secret matches + session sticky-dead (`reauth_required` /
+     `tier_denied`) → device login first, then the dead daemon is stopped
+     and replaced (its tokens were already wiped; nothing is lost).
+   - `XAI_OAUTH_SECRET` unset or wrong → refuse (never disturbs a daemon it
+     cannot authenticate to).
+   - daemon predates `/handoff` → refuse with a hint (`logout`, then one
+     final re-login).
+2. Otherwise (nothing listening): resolve scope (fixed constant; see §6).  
 3. Device-code OAuth against `auth.x.ai` (may open browser unless `--no-browser`).  
 4. Print socket / secret (if generated) to stderr (**not** “serving” yet).  
 5. **Default:** re-exec a detached daemon child (`setsid` on Unix;
@@ -143,6 +153,7 @@ next successful refresh); sticky failures report `reauth_required` /
 | `GET` | `/status` | **Yes** | See §3.3 |
 | `GET` | `/token` | **Yes** | `{"access_token":"...","token_type":"Bearer"}` |
 | `POST` | `/logout` | **Yes** | `{"ok":true,"logged_out":true}` then process exit |
+| `POST` | `/handoff` | **Yes** | Session snapshot **including the refresh token**; daemon drains and exits. Internal serve-takeover plumbing — not in the SDK; 409 `handoff_unavailable` when not ready |
 
 ### 3.2 Authentication
 
@@ -160,7 +171,7 @@ The Go SDK **always** sends the secret on every request, including `/health` and
 
 | Field | Type | Notes |
 |-------|------|--------|
-| `state` | string | `ready` \| `reauth_required` \| `tier_denied` |
+| `state` | string | `ready` \| `reauth_required` \| `tier_denied` \| `handed_off` (shutting down after takeover) |
 | `has_expiry` | bool | Whether an absolute expiry is known |
 | `expires_at` | string | RFC3339 UTC when `has_expiry` |
 | `token_valid` | bool | Held access token is hard-valid right now (false may still refresh fine) |
@@ -181,7 +192,8 @@ The Go SDK **always** sends the secret on every request, including `/health` and
 | 401 | `unauthorized` | Bad local secret |
 | 401 | `reauth_required` | Refresh dead / logged out; run `serve` again |
 | 403 | `tier_denied` | Account not entitled for API (refresh 403) |
-| 503 | `unavailable` | Transient IdP/network failure |
+| 409 | `handoff_unavailable` | `/handoff` only: session not ready (dead or already handed off) |
+| 503 | `unavailable` | Transient IdP/network failure, or daemon drained by a takeover (retry hits the successor) |
 
 ### 3.6 curl examples
 
@@ -252,6 +264,7 @@ Fixed client timeout: **30s** (shorten per call via ctx). No injectable
 
 ```go
 type State string // StateReady | StateReauthRequired | StateTierDenied
+                  // StateHandedOff (takeover shutdown window)
                   // (Ready only: StateDegraded | StateNotReady)
 
 type Status struct {
@@ -354,7 +367,10 @@ match the sentinels in §4.4 via `errors.Is`.
 | HTTP 403 `tier_denied` / SDK `ErrTierDenied` | Account lacks API entitlement for OAuth access (HTTP 403 from IdP) | Check subscription tier; retry after upgrading — state is sticky until a new `serve` |
 | HTTP 503 `unavailable` / SDK `ErrUnavailable` | Transient IdP/network failure during refresh | Retry later; check `xai-oauth status` `last_error`; verify proxy env if egress goes through one |
 | `/ready` 503 with `state="degraded"` | Access token expired **and** the last refresh failed | Usually transient — self-heals on the next successful refresh; inspect `last_error` |
-| `socket … is in use by a live process` | Another daemon (or foreign process) is serving on that path | `xai-oauth logout` the old daemon first, or choose a different `--socket` |
+| `daemon already running … but XAI_OAUTH_SECRET is not set` | `serve` found a live daemon but cannot authenticate a takeover | Export the daemon's secret and rerun `serve` (session is then preserved), or `xai-oauth logout` first |
+| `daemon on … predates session takeover (no /handoff)` | The running daemon is an older version without the takeover endpoint | `xai-oauth logout`, then `serve` — one final re-login; later upgrades are login-free |
+| `another takeover is in progress` | Two `serve` invocations raced | Wait a moment and check `xai-oauth status`; the winner's daemon should be `ready` |
+| `socket … in use by a live process` | Bind retry window expired: a predecessor did not release the path in time, or a foreign process serves there | Retry `serve`; if it persists, inspect the process holding the socket, or choose a different `--socket` |
 | `socket dir … must be mode 0700` / `not owned by current user` (Unix) | Socket parent dir is shared, group/world-accessible, or owned by another user | Point `--socket` / `XAI_OAUTH_SOCKET` at a private, user-owned directory |
 | `listen` fails on Windows (address family / protocol error) | Windows before 10 1803 / Server 2019 — no AF_UNIX support | Upgrade Windows; there is no Named Pipe / TCP fallback |
 | Generated secret lost (terminal closed) | Secret is printed once and never stored on disk | `xai-oauth logout` if reachable (or kill the daemon), then `serve` again with `XAI_OAUTH_SECRET` pre-exported |

@@ -54,7 +54,8 @@ xai-oauth serve     ──设备码──► 内存 Session ──HTTP/UDS──
 - **传输：** Unix domain socket（Unix 默认顺序：`$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` → `~/.xai-oauth/daemon.sock` → `$TMPDIR/xai-oauth/daemon.sock`；Windows：`%LOCALAPPDATA%\xai-oauth\daemon.sock`）。Unix 上 socket 文件 **0600**、父目录 **0700 且属主为当前 UID**（否则拒绝 listen）；Windows 上依赖 `%LOCALAPPDATA%` 的用户 NTFS ACL（chmod 无效）  
 - **协议：** HTTP（`GET /token` 等）跑在 Unix socket 上  
 - **唯一持有凭证的进程：** `serve`  
-- **重登：** 再次执行 `serve`  
+- **升级/换代：** 对运行中 daemon 再次 `serve` → 经 `POST /handoff` **接管内存会话**（免重登；drain 先等在途 refresh 完成，保证任意时刻只有一个进程持有可用 RT；投递失败回滚）  
+- **重登：** 会话死亡（reauth/tier）后再次执行 `serve`（自动顶替死 daemon）  
 - **logout：** 清内存并退出 serve  
 - **无 TCP 本机服务路径**（SDK 仅 UDS）
 
@@ -66,7 +67,8 @@ xai-oauth serve     ──设备码──► 内存 Session ──HTTP/UDS──
 
 ```text
 xai-oauth serve   [--socket] [--no-browser] [--foreground]
-                  # 设备码登录；默认 re-exec 后台 daemon，--foreground 保持前台
+                  # 有活 daemon：接管其会话（免登录）；否则设备码登录
+                  # 默认 re-exec 后台 daemon，--foreground 保持前台
 xai-oauth status  [--socket]                             # 查 daemon
 xai-oauth token   [--socket]                             # 打印 access_token
 xai-oauth logout  [--socket]                             # 清会话并停 daemon
@@ -178,6 +180,7 @@ workspaces:read workspaces:write
 | GET /status | secret | state / expires_at / token_valid / last_error |
 | GET /token | secret | 可用 AT |
 | POST /logout | secret | 清内存；serve 随后退出 |
+| POST /handoff | secret | 会话接管（**含 RT**，仅进程间升级用，不进 SDK）；drain 后退出 |
 
 Secret：仅 **`XAI_OAUTH_SECRET`**（CLI 无 `--secret`）；serve 未设置时可随机生成并打印一次。  
 CLI 的 status/token/logout **必须**已 export 该环境变量。
@@ -220,4 +223,5 @@ internal/server/
 4. invalid_grant → 稳定 reauth_required  
 5. logout（Clear）与在途 refresh 竞态：不恢复 token  
 6. 日志无完整 token；socket 文件 0600  
-7. CLI/SDK **仅** UDS；status/token/logout 与 SDK 均需 secret
+7. CLI/SDK **仅** UDS；status/token/logout 与 SDK 均需 secret  
+8. 对 ready daemon 再次 `serve` → 免登录接管；handoff 与在途 refresh 串行（轮换 RT 不丢失）；投递失败旧进程回滚继续服务

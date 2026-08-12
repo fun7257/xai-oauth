@@ -88,11 +88,27 @@ Windows 默认：`%LOCALAPPDATA%\xai-oauth\daemon.sock`。
 
 | 命令 | 作用 |
 |------|------|
-| `serve` | 设备码登录后**自动后台** daemon（UDS HTTP）；`--foreground` 保持前台 |
+| `serve` | 收敛到健康的后台 daemon：优先**接管**运行中的会话（免登录），否则设备码登录；`--foreground` 保持前台 |
 | `status` / `token` / `logout` | 控制面（**必须** secret） |
 | `version` / `help` | 版本 / 用法 |
 
 **没有**独立 `login` 子命令；登录只在 `serve` 内完成。
+
+### 升级不重新授权
+
+对着运行中的 daemon 再跑一次 `serve`，会**接管其内存会话**而不是拒绝：装好新
+二进制、确保 `XAI_OAUTH_SECRET` 与运行中 daemon 一致，再跑 `serve` 即可——
+不弹浏览器、亚秒级切换：
+
+```bash
+export XAI_OAUTH_SECRET='…'   # 与 daemon 相同的 secret
+./xai-oauth serve             # "taking over the running daemon (no re-login)"
+```
+
+注意：从**不带接管功能的旧版本**升级的第一次仍需重登一次；新版本若变更
+scope / client id 也必须重新授权（IdP 侧约束）；换账号用
+`logout && serve`；cron 脚本请写 `xai-oauth status || xai-oauth serve`，
+避免每次都无谓换代。
 
 ### Windows
 
