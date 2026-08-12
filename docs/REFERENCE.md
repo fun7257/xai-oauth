@@ -91,6 +91,8 @@ leftovers are removed. On shutdown, the path is removed best-effort.
 6. **`--foreground`:** keep tokens in this process and serve until stop (no re-exec).  
 7. Daemon listens HTTP on the Unix socket; holds access + refresh tokens in memory.  
 8. Daemon exits on SIGINT/SIGTERM, failed serve, or successful `POST /logout`.
+   The detached Windows child has no console (no Ctrl+C); stop it with
+   `xai-oauth logout`.
 
 ### 2.5 `status` output (typical)
 
@@ -197,6 +199,9 @@ curl --unix-socket "$SOCK" -X POST \
   -H "Authorization: Bearer $XAI_OAUTH_SECRET" \
   http://localhost/logout
 ```
+
+On Windows, `curl --unix-socket` support for AF_UNIX varies by curl build;
+prefer the CLI (`xai-oauth status|token|logout`) or the Go SDK.
 
 ---
 
@@ -336,7 +341,31 @@ Public client id is **not** a confidential secret; upstream policy may still cha
 
 ---
 
-## 7. Related docs
+## 7. Troubleshooting
+
+Symptom → likely cause → action. CLI messages appear on stderr; SDK errors
+match the sentinels in §4.4 via `errors.Is`.
+
+| Symptom | Likely cause | Action |
+|---------|--------------|--------|
+| `daemon: down` / `daemon not reachable` / SDK `ErrUnreachable` | No `serve` running, or CLI/SDK resolves a **different socket path** than the daemon (e.g. `XDG_RUNTIME_DIR` set in one shell but not the other) | Start `xai-oauth serve`; or pin the path explicitly on both sides with `XAI_OAUTH_SOCKET` / `--socket` |
+| HTTP 401 `unauthorized` / SDK `ErrUnauthorized` | `XAI_OAUTH_SECRET` missing or different from the serving process | Export the secret printed by `serve` (or the one you exported before `serve`); restart `serve` if it was generated and lost |
+| HTTP 401 `reauth_required` / SDK `ErrReauthRequired` | Refresh token rejected (`invalid_grant`), or session was logged out | Run `xai-oauth serve` again and complete device login |
+| HTTP 403 `tier_denied` / SDK `ErrTierDenied` | Account lacks API entitlement for OAuth access (HTTP 403 from IdP) | Check subscription tier; retry after upgrading — state is sticky until a new `serve` |
+| HTTP 503 `unavailable` / SDK `ErrUnavailable` | Transient IdP/network failure during refresh | Retry later; check `xai-oauth status` `last_error`; verify proxy env if egress goes through one |
+| `/ready` 503 with `state="degraded"` | Access token expired **and** the last refresh failed | Usually transient — self-heals on the next successful refresh; inspect `last_error` |
+| `socket … is in use by a live process` | Another daemon (or foreign process) is serving on that path | `xai-oauth logout` the old daemon first, or choose a different `--socket` |
+| `socket dir … must be mode 0700` / `not owned by current user` (Unix) | Socket parent dir is shared, group/world-accessible, or owned by another user | Point `--socket` / `XAI_OAUTH_SOCKET` at a private, user-owned directory |
+| `listen` fails on Windows (address family / protocol error) | Windows before 10 1803 / Server 2019 — no AF_UNIX support | Upgrade Windows; there is no Named Pipe / TCP fallback |
+| Generated secret lost (terminal closed) | Secret is printed once and never stored on disk | `xai-oauth logout` if reachable (or kill the daemon), then `serve` again with `XAI_OAUTH_SECRET` pre-exported |
+| Daemon "disappears" after closing the terminal (Windows) | The detached child has no console; it does not exit, only its window is gone | It is still running — use `xai-oauth status` / `logout` to manage it |
+
+The background daemon writes no logs (stdout/stderr → null device by design);
+`xai-oauth status` (`last_error`) is the diagnostic channel.
+
+---
+
+## 8. Related docs
 
 | Doc | Role |
 |-----|------|
