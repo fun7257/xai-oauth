@@ -61,14 +61,25 @@ instead of POSIX file modes (see [SECURITY.md](SECURITY.md)).
 
 ## Install
 
+From source (Go 1.26+):
+
 ```bash
 cd xai-oauth
 make build                 # → ./xai-oauth
-# or: make install         # → ~/.local/bin/xai-oauth
+# or: make install         # → ~/.local/bin/xai-oauth   (make uninstall to remove)
+# or, without cloning:
+go install github.com/fun7257/xai-oauth/cmd/xai-oauth@latest
 ```
 
-Tagged releases (`v*`) publish **Linux, macOS, and Windows** binaries via
-GitHub Actions (see [.github/workflows/release.yml](.github/workflows/release.yml)).
+Or download a release: tagged releases (`v*`) publish **Linux, macOS
+(`.tar.gz`), and Windows (`.zip`)** binaries via GitHub Actions (see
+[.github/workflows/release.yml](.github/workflows/release.yml)). Verify the
+checksums before use:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+tar -xzf xai-oauth_<version>_linux_amd64.tar.gz   # unzip … on Windows
+```
 
 ## Usage
 
@@ -106,11 +117,29 @@ Windows: `%LOCALAPPDATA%\xai-oauth\daemon.sock`.
 | `token` | Print usable `access_token` (requires secret) |
 | `logout` | Clear session and stop daemon (requires secret) |
 | `version` | Print version |
+| `help` | Print usage |
 
 There is **no** separate `login` command: sign-in happens inside `serve`.
 After logout or reauth, run `serve` again.
 
+### Windows
+
+Same commands from PowerShell; set the environment variable with `$env:`:
+
+```powershell
+.\xai-oauth.exe serve
+$env:XAI_OAUTH_SECRET = '…'   # if serve printed a generated secret
+.\xai-oauth.exe status
+.\xai-oauth.exe token
+.\xai-oauth.exe logout        # the detached daemon has no console; stop it this way
+```
+
+Default socket: `%LOCALAPPDATA%\xai-oauth\daemon.sock` (requires Windows 10
+1803+ / Server 2019+ for AF_UNIX).
+
 ### Go SDK
+
+API docs: [pkg.go.dev/github.com/fun7257/xai-oauth/client](https://pkg.go.dev/github.com/fun7257/xai-oauth/client)
 
 ```go
 import (
@@ -187,9 +216,25 @@ Device login uses a **public** client id (see `internal/protocol/constants.go`).
 This is **not** a private API key, but upstream policy may still restrict or
 revoke it. This project does **not** claim official approval by xAI.
 
+## Troubleshooting
+
+Most common cases (full table: [docs/REFERENCE.md §7](docs/REFERENCE.md#7-troubleshooting)):
+
+- `daemon: down` — `serve` not running, or the CLI resolves a different
+  socket path than the daemon; pin `XAI_OAUTH_SOCKET` on both sides.
+- `unauthorized` — `XAI_OAUTH_SECRET` missing/mismatched; export the secret
+  the serving process uses.
+- `reauth_required` — refresh token rejected or logged out; run `serve` again.
+- `socket … in use by a live process` — a previous daemon still serves there;
+  `xai-oauth logout` it first.
+
+The background daemon writes no logs by design; `xai-oauth status`
+(`last_error`) is the diagnostic channel.
+
 ## Reference
 
-Full command / HTTP / SDK / environment tables: **[docs/REFERENCE.md](docs/REFERENCE.md)**.
+Full command / HTTP / SDK / environment / troubleshooting tables:
+**[docs/REFERENCE.md](docs/REFERENCE.md)**.
 
 ## Development
 
