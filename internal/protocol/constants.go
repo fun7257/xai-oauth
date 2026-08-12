@@ -20,4 +20,12 @@ const (
 
 	// IDPRequestTimeout bounds a single discovery / device / refresh HTTP call.
 	IDPRequestTimeout = 20 * time.Second
+
+	// MaxDeviceAuthWindow caps how long PollDeviceToken waits for approval,
+	// even if the IdP reports a larger expires_in (defensive upper bound).
+	MaxDeviceAuthWindow = 30 * time.Minute
+
+	// MaxDevicePollInterval caps the token poll interval, including
+	// slow_down growth and IdP-provided initial values.
+	MaxDevicePollInterval = 30 * time.Second
 )
