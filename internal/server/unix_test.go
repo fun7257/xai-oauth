@@ -81,6 +81,62 @@ func TestListenUnixRoundTrip(t *testing.T) {
 	}
 }
 
+func TestListenUnixRefusesLiveSocket(t *testing.T) {
+	dir := shortTempDir(t)
+	sock := filepath.Join(dir, "s.sock")
+
+	ln, err := ListenUnix(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = ln.Close()
+		RemoveUnixSocket(sock)
+	}()
+
+	// A second bind on the same path must refuse instead of deleting the
+	// live daemon's socket out from under it.
+	if _, err := ListenUnix(sock); err == nil {
+		t.Fatal("expected refuse while socket is live")
+	}
+
+	// The live listener must still be reachable afterwards.
+	conn, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatalf("original socket unusable after refused bind: %v", err)
+	}
+	_ = conn.Close()
+}
+
+func TestListenUnixRemovesStaleSocket(t *testing.T) {
+	dir := shortTempDir(t)
+	sock := filepath.Join(dir, "s.sock")
+
+	// Simulate a crashed daemon: bind, then close without unlinking the path.
+	addr, err := net.ResolveUnixAddr("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, err := net.ListenUnix("unix", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale.SetUnlinkOnClose(false)
+	if err := stale.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(sock); err != nil {
+		t.Fatalf("stale socket file missing: %v", err)
+	}
+
+	ln, err := ListenUnix(sock)
+	if err != nil {
+		t.Fatalf("expected stale socket to be replaced: %v", err)
+	}
+	_ = ln.Close()
+	RemoveUnixSocket(sock)
+}
+
 func TestListenUnixRejectsNonSocketFile(t *testing.T) {
 	dir := shortTempDir(t)
 	path := filepath.Join(dir, "notasock")

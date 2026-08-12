@@ -9,12 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // ListenUnix binds an HTTP-capable listener on a Unix domain socket path.
 // Parent directory is created with 0700 and must be owned by the current user;
-// the socket file is chmod 0600. An existing socket file at path is removed first
-// (stale daemon).
+// the socket file is chmod 0600. An existing socket file at path is removed
+// only after probing that nothing accepts connections on it (stale daemon);
+// a live listener is refused instead of being silently orphaned.
 func ListenUnix(path string) (net.Listener, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -35,6 +37,9 @@ func ListenUnix(path string) (net.Listener, error) {
 
 	if fi, err := os.Lstat(path); err == nil {
 		if fi.Mode()&os.ModeSocket != 0 {
+			if socketAlive(path) {
+				return nil, fmt.Errorf("socket %s is in use by a live process; stop it first (xai-oauth logout)", path)
+			}
 			if err := os.Remove(path); err != nil {
 				return nil, fmt.Errorf("remove stale socket: %w", err)
 			}
@@ -55,6 +60,18 @@ func ListenUnix(path string) (net.Listener, error) {
 		return nil, fmt.Errorf("chmod socket: %w", err)
 	}
 	return ln, nil
+}
+
+// socketAlive reports whether something currently accepts connections on the
+// Unix socket at path. A refused/failed dial means the file is a stale
+// leftover from a crashed process and is safe to remove.
+func socketAlive(path string) bool {
+	conn, err := net.DialTimeout("unix", path, 250*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 // ensurePrivateDir requires dir to be owned by the current UID with mode 0700.
