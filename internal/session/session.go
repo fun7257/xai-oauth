@@ -18,6 +18,10 @@ const (
 	StateReady          State = "ready"
 	StateReauthRequired State = "reauth_required"
 	StateTierDenied     State = "tier_denied"
+	// StateHandedOff: the session was transferred to a successor process
+	// (serve takeover). This process is shutting down; token requests fail
+	// with unavailable so clients retry against the successor.
+	StateHandedOff State = "handed_off"
 )
 
 // refreshFunc is the IdP refresh call. Tests inject a stub; production uses protocol.Refresh.
@@ -26,6 +30,11 @@ type refreshFunc func(ctx context.Context, client *http.Client, tokenEndpoint, r
 // Session holds in-memory OAuth credentials for one process.
 type Session struct {
 	mu sync.Mutex
+
+	// opMu serializes IdP refresh calls with handoff drains so a handoff
+	// snapshot can never race a refresh-token rotation (a snapshot taken
+	// mid-refresh would hand out an already-consumed RT).
+	opMu sync.Mutex
 
 	client *http.Client
 
@@ -120,6 +129,71 @@ func (s *Session) Ready() (ready bool, reason string) {
 	return false, ReadyReasonDegraded
 }
 
+// HandoffData is a snapshot of live session credentials for process takeover
+// (POST /handoff). It contains the refresh token — handle it like the session
+// itself: memory only, never persisted, zero out after use.
+type HandoffData struct {
+	AccessToken   string
+	RefreshToken  string
+	TokenEndpoint string
+	ExpiresAt     time.Time
+	HasExpiry     bool
+}
+
+// Handoff drains the session for takeover by a successor process. It waits
+// for any in-flight refresh to complete first (a snapshot taken mid-refresh
+// could capture an already-consumed rotated refresh token), then wipes the
+// credentials from this session, marks the state handed_off (token requests
+// fail unavailable so clients retry against the successor), and returns the
+// snapshot. When the session is not ready, the current state is returned so
+// callers can report it. Use RestoreHandoff to roll back when the snapshot
+// cannot be delivered.
+func (s *Session) Handoff() (*HandoffData, State, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state != StateReady {
+		return nil, s.state, fmt.Errorf("session not ready for handoff (state %s)", s.state)
+	}
+	d := &HandoffData{
+		AccessToken:   s.accessToken,
+		RefreshToken:  s.refreshToken,
+		TokenEndpoint: s.tokenEndpoint,
+		ExpiresAt:     s.expiresAt,
+		HasExpiry:     s.hasExpiry,
+	}
+	s.accessToken = ""
+	s.refreshToken = ""
+	s.tokenEndpoint = ""
+	s.expiresAt = time.Time{}
+	s.hasExpiry = false
+	s.state = StateHandedOff
+	s.lastError = "handed_off"
+	return d, StateHandedOff, nil
+}
+
+// RestoreHandoff reinstates credentials after a failed handoff delivery so
+// this process keeps serving. It is a no-op unless the session is still in
+// handed_off — a logout that raced the handoff must not be resurrected.
+func (s *Session) RestoreHandoff(d *HandoffData) {
+	if d == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state != StateHandedOff {
+		return
+	}
+	s.accessToken = d.AccessToken
+	s.refreshToken = d.RefreshToken
+	s.tokenEndpoint = d.TokenEndpoint
+	s.expiresAt = d.ExpiresAt
+	s.hasExpiry = d.HasExpiry
+	s.state = StateReady
+	s.lastError = ""
+}
+
 // Clear wipes credentials from memory (logout). Subsequent GetAccessToken fails with reauth.
 func (s *Session) Clear() {
 	s.mu.Lock()
@@ -143,6 +217,9 @@ func (s *Session) GetAccessToken(ctx context.Context) (string, error) {
 	case StateTierDenied:
 		s.mu.Unlock()
 		return "", protocol.ErrTierDenied
+	case StateHandedOff:
+		s.mu.Unlock()
+		return "", protocol.ErrUnavailable
 	}
 	if s.accessStillFreshLocked() {
 		tok := s.accessToken
@@ -181,6 +258,11 @@ func (s *Session) hardValidLocked() bool {
 }
 
 func (s *Session) refreshIfNeeded(ctx context.Context) (string, error) {
+	// Serialize with Handoff: a drain must wait for this refresh to finish
+	// (or start only before/after it), never interleave with the IdP call.
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+
 	s.mu.Lock()
 	switch s.state {
 	case StateReauthRequired:
@@ -189,6 +271,9 @@ func (s *Session) refreshIfNeeded(ctx context.Context) (string, error) {
 	case StateTierDenied:
 		s.mu.Unlock()
 		return "", protocol.ErrTierDenied
+	case StateHandedOff:
+		s.mu.Unlock()
+		return "", protocol.ErrUnavailable
 	}
 	if s.accessStillFreshLocked() {
 		tok := s.accessToken
@@ -220,7 +305,8 @@ func (s *Session) refreshIfNeeded(ctx context.Context) (string, error) {
 	exp, ok := protocol.ExpiresAtFromToken(tr.AccessToken, tr.ExpiresIn, time.Now())
 	s.mu.Lock()
 	// Clear (or sticky reauth/tier) may have won while the IdP call was in flight.
-	// Do not resurrect tokens after logout or terminal failure.
+	// Do not resurrect tokens after logout or terminal failure. (Handoff cannot
+	// interleave here — it waits on opMu — but check defensively.)
 	switch s.state {
 	case StateReauthRequired:
 		s.mu.Unlock()
@@ -228,6 +314,9 @@ func (s *Session) refreshIfNeeded(ctx context.Context) (string, error) {
 	case StateTierDenied:
 		s.mu.Unlock()
 		return "", protocol.ErrTierDenied
+	case StateHandedOff:
+		s.mu.Unlock()
+		return "", protocol.ErrUnavailable
 	}
 	if s.refreshToken == "" {
 		s.state = StateReauthRequired

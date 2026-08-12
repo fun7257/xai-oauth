@@ -64,8 +64,31 @@ func cmdServe(args []string) error {
 	// Operator secret: environment only (no --secret flag).
 	sec := strings.TrimSpace(os.Getenv(client.EnvSecret))
 	generated := false
-	var err error
-	if sec == "" {
+
+	// Converge to a healthy daemon: take over a running one (session
+	// preserved, no re-login), replace one whose session is sticky-dead
+	// (fresh login), refuse when we cannot authenticate to it.
+	var handoff *loginHandoff
+	replaceDead := false
+	if daemonAlive(sockPath) {
+		if sec == "" {
+			return fmt.Errorf("daemon already running on %s but XAI_OAUTH_SECRET is not set; export the daemon's secret, or run: xai-oauth logout", sockPath)
+		}
+		outcome, h, err := attemptHandoff(sockPath, sec)
+		if err != nil {
+			return err
+		}
+		switch outcome {
+		case takeoverAcquired:
+			handoff = h
+			handoff.Secret = sec
+			fmt.Fprintln(os.Stderr, "xai-oauth serve — taking over the running daemon (no re-login)")
+		case takeoverDeadSession:
+			replaceDead = true
+			fmt.Fprintln(os.Stderr, "xai-oauth serve — running daemon has a dead session; signing in, then replacing it")
+		}
+	} else if sec == "" {
+		var err error
 		sec, err = randomSecret()
 		if err != nil {
 			return err
@@ -73,28 +96,38 @@ func cmdServe(args []string) error {
 		generated = true
 	}
 
-	// Avoid orphaning a previous daemon / stealing the socket after login.
-	if err := refuseIfSocketBusy(sockPath, sec); err != nil {
-		return err
-	}
-
 	httpClient := protocol.NewIDPClient(protocol.IDPRequestTimeout)
 
-	fmt.Fprintln(os.Stderr, "xai-oauth serve — xAI OAuth2 personal (device login)")
-	fmt.Fprintf(os.Stderr, "  scope:  %s\n", protocol.Scope)
-	fmt.Fprintln(os.Stderr)
+	if handoff == nil {
+		fmt.Fprintln(os.Stderr, "xai-oauth serve — xAI OAuth2 personal (device login)")
+		fmt.Fprintf(os.Stderr, "  scope:  %s\n", protocol.Scope)
+		fmt.Fprintln(os.Stderr)
 
-	loginCtx, loginCancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer loginCancel()
+		loginCtx, loginCancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer loginCancel()
 
-	handoff, err := deviceLoginHandoff(loginCtx, httpClient, !*noBrowser)
-	if err != nil {
-		return err
+		h, err := deviceLoginHandoff(loginCtx, httpClient, !*noBrowser)
+		if err != nil {
+			return err
+		}
+		handoff = h
+		handoff.Secret = sec
+
+		if replaceDead {
+			// Sticky states already wiped the old daemon's tokens; stopping
+			// it loses nothing. Stop it only after the login succeeded so a
+			// failed login leaves the (still inspectable) daemon in place.
+			if err := logoutOldDaemon(sockPath, sec); err != nil {
+				zeroHandoff(handoff)
+				return fmt.Errorf("login succeeded but the previous daemon would not stop: %w", err)
+			}
+		}
+
+		// Credentials after login; do not claim "serving" until listen/ready succeeds.
+		printLoginCredentials(sockPath, sec, generated)
+	} else {
+		printTakeover(sockPath)
 	}
-	handoff.Secret = sec
-
-	// Credentials after login; do not claim "serving" until listen/ready succeeds.
-	printLoginCredentials(sockPath, sec, generated)
 
 	if *foreground {
 		sess, err := session.NewFromLogin(httpClient, handoffToLoginResult(handoff))
@@ -137,28 +170,12 @@ func printLoginCredentials(sockPath, sec string, generated bool) {
 	fmt.Fprintln(os.Stderr)
 }
 
-// refuseIfSocketBusy fails if something already answers on the socket, so a
-// second serve cannot orphan a previous token-holding process.
-func refuseIfSocketBusy(sockPath, sec string) error {
-	var busy error
-	_ = withSecretEnv(sec, func() error {
-		c, err := client.New(client.Config{SocketPath: sockPath})
-		if err != nil {
-			return nil
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-		defer cancel()
-		if err := c.Health(ctx); err != nil {
-			return nil
-		}
-		if st, err := c.Status(ctx); err == nil && st != nil {
-			busy = fmt.Errorf("daemon already running on %s (state=%s); run: xai-oauth logout", sockPath, st.State)
-			return nil
-		}
-		busy = fmt.Errorf("socket %s is already in use (wrong secret or foreign listener); logout or free the path", sockPath)
-		return nil
-	})
-	return busy
+func printTakeover(sockPath string) {
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Session taken over from the previous daemon — no re-login needed.")
+	fmt.Fprintf(os.Stderr, "  socket:  %s\n", sockPath)
+	fmt.Fprintln(os.Stderr, "  secret:  (unchanged, from env XAI_OAUTH_SECRET)")
+	fmt.Fprintln(os.Stderr)
 }
 
 // withSecretEnv temporarily sets XAI_OAUTH_SECRET so client.New (env-only)
@@ -179,7 +196,9 @@ func withSecretEnv(sec string, fn func() error) error {
 }
 
 func runServer(sockPath, sec string, sess *session.Session) error {
-	ln, err := server.ListenUnix(sockPath)
+	// Retry through a predecessor's shutdown window (takeover/replace);
+	// non-busy errors fail immediately.
+	ln, err := listenWithRetry(sockPath, 5*time.Second)
 	if err != nil {
 		return err
 	}
