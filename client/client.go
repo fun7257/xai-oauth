@@ -14,6 +14,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -45,11 +46,29 @@ type Config struct {
 }
 
 // Client talks to a running xai-oauth serve process over a Unix socket.
+// It is safe for concurrent use by multiple goroutines.
 type Client struct {
 	secret string
 	http   *http.Client
 	socket string
 }
+
+// State is the daemon session state as reported by /status and /ready.
+type State string
+
+const (
+	// StateReady: the session can serve tokens.
+	StateReady State = "ready"
+	// StateReauthRequired: sticky failure; restart xai-oauth serve and sign in.
+	StateReauthRequired State = "reauth_required"
+	// StateTierDenied: sticky failure; the account lacks API entitlement.
+	StateTierDenied State = "tier_denied"
+	// StateDegraded (Ready only): the access token expired and the last
+	// refresh failed; self-heals when a refresh succeeds.
+	StateDegraded State = "degraded"
+	// StateNotReady (Ready only): daemon answered without a usable state.
+	StateNotReady State = "not_ready"
+)
 
 // New builds a Client. The local secret is required and taken only from
 // XAI_OAUTH_SECRET (no Config field).
@@ -87,8 +106,21 @@ func unixHTTPClient(socket string) *http.Client {
 				var d net.Dialer
 				return d.DialContext(ctx, "unix", socket)
 			},
+			// One local daemon behind one synthetic host; keep a small,
+			// short-lived idle pool.
+			MaxIdleConns:    2,
+			IdleConnTimeout: 60 * time.Second,
 		},
 	}
+}
+
+// CloseIdleConnections releases idle daemon connections held by the client.
+// The Client remains usable; connections are re-established on demand.
+func (c *Client) CloseIdleConnections() {
+	if c == nil || c.http == nil {
+		return
+	}
+	c.http.CloseIdleConnections()
 }
 
 // SocketPath returns the Unix socket path this client dials.
@@ -128,9 +160,11 @@ func (c *Client) Get(ctx context.Context) (string, error) {
 
 // Status is a non-sensitive snapshot from GET /status.
 type Status struct {
-	State     string `json:"state"`
-	HasExpiry bool   `json:"has_expiry"`
-	ExpiresAt string `json:"expires_at,omitempty"`
+	State State `json:"state"`
+	// HasExpiry reports whether ExpiresAt is known.
+	HasExpiry bool `json:"has_expiry"`
+	// ExpiresAt is the access-token expiry (zero when !HasExpiry).
+	ExpiresAt time.Time `json:"expires_at,omitzero"`
 	// TokenValid reports whether the daemon's access token is hard-valid
 	// right now; false may still mean /token succeeds via refresh.
 	TokenValid bool   `json:"token_valid"`
@@ -161,8 +195,10 @@ func (c *Client) Status(ctx context.Context) (*Status, error) {
 	return &st, nil
 }
 
-// Ready calls GET /ready.
-func (c *Client) Ready(ctx context.Context) (bool, string, error) {
+// Ready calls GET /ready. When not ready, state names the reason:
+// StateReauthRequired / StateTierDenied (sticky) or StateDegraded
+// (transient refresh failure with an expired token).
+func (c *Client) Ready(ctx context.Context) (ready bool, state State, err error) {
 	if err := c.require(); err != nil {
 		return false, "", err
 	}
@@ -174,17 +210,60 @@ func (c *Client) Ready(ctx context.Context) (bool, string, error) {
 		return false, "", err
 	}
 	var out struct {
-		Ready bool   `json:"ready"`
-		State string `json:"state"`
+		Ready bool  `json:"ready"`
+		State State `json:"state"`
 	}
 	_ = json.Unmarshal(body, &out)
 	if status == http.StatusOK && out.Ready {
-		return true, "ready", nil
+		return true, StateReady, nil
 	}
 	if out.State == "" {
-		out.State = "not_ready"
+		out.State = StateNotReady
 	}
 	return false, out.State, nil
+}
+
+// WaitReady polls GET /status until the daemon reports a ready session, ctx
+// is done, or a failure that cannot resolve on its own is detected (wrong
+// local secret, sticky reauth_required / tier_denied). Useful right after
+// starting xai-oauth serve. Transient conditions (daemon not yet listening,
+// degraded session) keep polling.
+func (c *Client) WaitReady(ctx context.Context) error {
+	if err := c.require(); err != nil {
+		return err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var last error
+	for {
+		st, err := c.Status(ctx)
+		switch {
+		case err == nil && st.State == StateReady:
+			return nil
+		case err == nil:
+			switch st.State {
+			case StateReauthRequired:
+				return fmt.Errorf("%w: daemon state %s", ErrReauthRequired, st.State)
+			case StateTierDenied:
+				return fmt.Errorf("%w: daemon state %s", ErrTierDenied, st.State)
+			}
+			last = fmt.Errorf("daemon state %q", st.State)
+		case errors.Is(err, ErrUnauthorized):
+			return err // wrong secret will not fix itself
+		default:
+			last = err
+		}
+
+		select {
+		case <-ctx.Done():
+			if last == nil {
+				last = ctx.Err()
+			}
+			return fmt.Errorf("wait ready: %w", last)
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
 }
 
 // Logout calls POST /logout (clears session; serve typically exits).
@@ -242,7 +321,8 @@ func (c *Client) doJSON(ctx context.Context, method, path string) ([]byte, int, 
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("xai-oauth client: %w", err)
+		// Transport-level failure: daemon down, bad socket path, refused.
+		return nil, 0, fmt.Errorf("%w (socket %s): %v", ErrUnreachable, c.socket, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))

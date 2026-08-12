@@ -16,7 +16,7 @@ func TestIsXAIHost(t *testing.T) {
 		"x.ai.", // trailing dot trimmed
 	}
 	for _, h := range ok {
-		if !isXAIHost(h) {
+		if !IsXAIHost(h) {
 			t.Fatalf("expected allow %q", h)
 		}
 	}
@@ -33,7 +33,7 @@ func TestIsXAIHost(t *testing.T) {
 		"example.com",
 	}
 	for _, h := range bad {
-		if isXAIHost(h) {
+		if IsXAIHost(h) {
 			t.Fatalf("expected reject %q", h)
 		}
 	}
