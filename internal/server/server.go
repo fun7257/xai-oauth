@@ -30,6 +30,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /status", s.handleStatus)
 	mux.HandleFunc("GET /token", s.handleToken)
 	mux.HandleFunc("POST /logout", s.handleLogout)
+	mux.HandleFunc("POST /handoff", s.handleHandoff)
 	return mux
 }
 
@@ -112,6 +113,55 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "logged_out": true})
 	if s.OnLogout != nil {
 		// Run after response flush path: schedule so WriteHeader completes first.
+		go s.OnLogout()
+	}
+}
+
+// handleHandoff transfers the live session to a successor process (serve
+// takeover / zero-reauth upgrade). The response contains the refresh token;
+// the route is gated by the same local secret as /token and the exposure is
+// documented in SECURITY.md. The session is drained before the response is
+// written (single-refresher invariant); if delivery fails the session is
+// restored and this daemon keeps serving, otherwise it shuts down like a
+// logout.
+func (s *Server) handleHandoff(w http.ResponseWriter, r *http.Request) {
+	if !s.checkSecret(w, r) {
+		return
+	}
+	d, state, err := s.Session.Handoff()
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": "handoff_unavailable",
+			"state": string(state),
+		})
+		return
+	}
+	body := map[string]any{
+		"access_token":   d.AccessToken,
+		"refresh_token":  d.RefreshToken,
+		"token_endpoint": d.TokenEndpoint,
+		"has_expiry":     d.HasExpiry,
+	}
+	if d.HasExpiry {
+		body["expires_at"] = d.ExpiresAt.UTC().Format(time.RFC3339)
+	}
+	buf, err := json.Marshal(body)
+	if err != nil {
+		s.Session.RestoreHandoff(d)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "handoff_failed"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if _, werr := w.Write(buf); werr != nil {
+		// The successor never received the session; keep serving here.
+		s.Session.RestoreHandoff(d)
+		return
+	}
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	if s.OnLogout != nil {
 		go s.OnLogout()
 	}
 }

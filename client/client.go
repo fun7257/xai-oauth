@@ -66,6 +66,9 @@ const (
 	// StateDegraded (Ready only): the access token expired and the last
 	// refresh failed; self-heals when a refresh succeeds.
 	StateDegraded State = "degraded"
+	// StateHandedOff: the daemon transferred its session to a successor
+	// process (serve takeover) and is shutting down; retry shortly.
+	StateHandedOff State = "handed_off"
 	// StateNotReady (Ready only): daemon answered without a usable state.
 	StateNotReady State = "not_ready"
 )

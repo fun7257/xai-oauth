@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -8,6 +9,11 @@ import (
 	"strings"
 	"time"
 )
+
+// ErrSocketInUse reports that the socket path is currently served by a live
+// process. Callers replacing a daemon (serve takeover) match it with
+// errors.Is and retry until the predecessor releases the path.
+var ErrSocketInUse = errors.New("socket is in use by a live process")
 
 // ListenUnix binds an HTTP-capable listener on a Unix domain socket path
 // (AF_UNIX; supported on Linux, macOS, and Windows 10 1803+ / Server 2019+).
@@ -40,7 +46,7 @@ func ListenUnix(path string) (net.Listener, error) {
 			return nil, fmt.Errorf("socket path exists and is not a socket: %s", path)
 		}
 		if socketAlive(path) {
-			return nil, fmt.Errorf("socket %s is in use by a live process; stop it first (xai-oauth logout)", path)
+			return nil, fmt.Errorf("%w: %s (stop it first: xai-oauth logout)", ErrSocketInUse, path)
 		}
 		if err := os.Remove(path); err != nil {
 			return nil, fmt.Errorf("remove stale socket: %w", err)

@@ -18,7 +18,7 @@ call `https://api.x.ai` themselves with that bearer.
 | Keep the daemon on a **user-only Unix socket** (default `0600`) | Treat this as a shared or network service |
 | Set **`XAI_OAUTH_SECRET`** in the environment (CLI has no `--secret` flag) | Put the secret on the command line or in world-readable scripts |
 | Treat OAuth access/refresh tokens as secrets | Log full tokens or leave `token` stdout in world-readable CI logs |
-| Restart `serve` after logout / reauth | Expect tokens to survive process restart |
+| Rerun `serve` after logout / reauth — and to **upgrade in place** (running daemon's session is taken over, no re-login) | Expect tokens to survive a crash or reboot (memory only) |
 
 Anyone who can open the socket **and** present the local secret can obtain
 **your** OAuth access token and spend **your** API quota.
@@ -112,7 +112,7 @@ Windows: `%LOCALAPPDATA%\xai-oauth\daemon.sock`.
 
 | Command | Role |
 |---------|------|
-| `serve` | Device-code login, then **background** daemon (UDS HTTP); use `--foreground` to stay attached |
+| `serve` | Converge to a healthy **background** daemon: take over a running one (no re-login) or device-code login; `--foreground` stays attached |
 | `status` | Query daemon (requires secret) |
 | `token` | Print usable `access_token` (requires secret) |
 | `logout` | Clear session and stop daemon (requires secret) |
@@ -121,6 +121,28 @@ Windows: `%LOCALAPPDATA%\xai-oauth\daemon.sock`.
 
 There is **no** separate `login` command: sign-in happens inside `serve`.
 After logout or reauth, run `serve` again.
+
+### Upgrading without re-authorizing
+
+`serve` against a running daemon **takes over its in-memory session** instead
+of refusing: install the new binary, make sure `XAI_OAUTH_SECRET` matches the
+running daemon, and run `serve` again — no browser, no device code, sub-second
+switchover:
+
+```bash
+export XAI_OAUTH_SECRET='…'   # same secret the daemon uses
+./xai-oauth serve             # "taking over the running daemon (no re-login)"
+```
+
+Notes:
+
+- The first upgrade **from a version without takeover** still needs one
+  re-login (`logout`, then `serve`); every upgrade after that is login-free.
+- Scope or client-id changes in a new version require a fresh consent —
+  re-login is unavoidable in that case.
+- To switch accounts: `xai-oauth logout && xai-oauth serve`.
+- In cron/scripts use `xai-oauth status || xai-oauth serve` so a healthy
+  daemon is left alone instead of being replaced on every tick.
 
 ### Windows
 

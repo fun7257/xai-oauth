@@ -30,6 +30,9 @@ Anyone who can connect to the daemon socket **and** present a valid local
 secret can:
 
 - Obtain a live **OAuth access token** for your account
+- Extract the whole session **including the refresh token** via
+  `POST /handoff` (the serve-takeover endpoint; the daemon then drains and
+  exits)
 - Call `api.x.ai` as you (quota, rate limits, billable usage depending on tier)
 
 Attack surface is roughly:
@@ -50,7 +53,8 @@ the Go SDK still sends the secret on every call.
 | Socket file mode | Unix: `0600` after bind; parent dir `0700` **and owned by the serving UID** (listen fails otherwise). Windows: chmod is a no-op — isolation comes from the parent directory's NTFS ACLs (default path under `%LOCALAPPDATA%`) |
 | Local authentication | Required for `/token`, `/status`, `/logout` (constant-time secret compare via SHA-256 digests) |
 | Open without secret (server) | `/health`, `/ready` only |
-| Token storage | **Memory only** — lost on process exit; no `tokens.json` |
+| Session takeover (`POST /handoff`) | Same secret gate as `/token`; returns the **refresh token** once, drains the daemon (single-refresher invariant: an in-flight refresh completes before the snapshot, so a rotated RT is never lost), restores on delivery failure. Memory-to-memory only; kept out of the public SDK |
+| Token storage | **Memory only** — lost on process exit; no `tokens.json`; upgrades preserve the session via takeover, crashes/reboots do not |
 | Upstream OAuth | HTTPS to `auth.x.ai`; host pin to true `x.ai` DNS labels |
 | Device verification URL | https + x.ai host pin; user_code charset/length limits |
 | Logging | Must not log full access/refresh tokens |
