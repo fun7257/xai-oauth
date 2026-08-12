@@ -52,10 +52,12 @@ change allowlists, scopes, or terms at any time; use at your own risk.
 
 - Go **1.26+** (see `go.mod`)
 - SuperGrok or X Premium+ (or whatever tier xAI requires for OAuth API access)
-- **Linux or macOS** with Unix domain sockets
+- **Linux, macOS, or Windows 10 1803+ / Server 2019+** (AF_UNIX sockets)
 
-**Windows is not supported** (no CLI, SDK, or release binaries). Control plane and
-SDK use Unix domain sockets only; there is no Named Pipe / TCP fallback.
+Control plane and SDK use Unix domain sockets (AF_UNIX) on every platform;
+there is no Named Pipe / TCP fallback. On Windows, per-user isolation comes
+from the NTFS ACLs of the default `%LOCALAPPDATA%\xai-oauth` directory
+instead of POSIX file modes (see [SECURITY.md](SECURITY.md)).
 
 ## Install
 
@@ -65,8 +67,8 @@ make build                 # → ./xai-oauth
 # or: make install         # → ~/.local/bin/xai-oauth
 ```
 
-Tagged releases (`v*`) publish **Linux and macOS** binaries via GitHub Actions
-(see [.github/workflows/release.yml](.github/workflows/release.yml)).
+Tagged releases (`v*`) publish **Linux, macOS, and Windows** binaries via
+GitHub Actions (see [.github/workflows/release.yml](.github/workflows/release.yml)).
 
 ## Usage
 
@@ -92,6 +94,8 @@ Default socket (full order: [docs/REFERENCE.md](docs/REFERENCE.md) §2.3):
 2. `$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` (if set)
 3. `~/.xai-oauth/daemon.sock`
 4. `$TMPDIR/xai-oauth/daemon.sock` only if home is unavailable (prefer setting home or `XAI_OAUTH_SOCKET`)
+
+Windows: `%LOCALAPPDATA%\xai-oauth\daemon.sock`.
 
 ### CLI commands
 
@@ -192,10 +196,8 @@ make cover
 
 | Workflow | Trigger | What it does |
 |----------|---------|----------------|
-| [CI](.github/workflows/ci.yml) | push/PR to `main`, **daily schedule**, manual | `make check` + race on Ubuntu & macOS; cross-build Linux/macOS (scheduled/manual uploads artifacts) |
+| [CI](.github/workflows/ci.yml) | push/PR to `main`, **daily schedule**, manual | `make check` + race on Ubuntu & macOS; vet/test/race on Windows; cross-build Linux/macOS/Windows (scheduled/manual uploads artifacts) |
 | [Release](.github/workflows/release.yml) | tag `v*` | check + publish release binaries |
-
-Windows is not tested or built.
 
 ## License
 

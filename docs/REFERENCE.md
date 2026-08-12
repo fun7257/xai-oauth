@@ -18,8 +18,9 @@ For a short getting-started path, see [README.md](../README.md).
 - There is **no** offline `login` command. Sign-in runs inside `serve`.
 - After `logout` or sticky reauth, run **`serve` again**.
 - Tokens are **not** written to disk.
-- **Platforms:** Linux and macOS only. **Windows is not supported** (CLI, SDK,
-  and packages use `//go:build unix`; no Named Pipe or TCP control plane).
+- **Platforms:** Linux, macOS, and Windows 10 1803+ / Server 2019+. The
+  control plane is AF_UNIX (HTTP over Unix domain sockets) on every platform;
+  there is no Named Pipe or TCP fallback.
 
 ---
 
@@ -58,16 +59,21 @@ Resolution order for socket path:
 
 1. `--socket` if non-empty  
 2. else `XAI_OAUTH_SOCKET` if non-empty  
-3. else `$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` if `XDG_RUNTIME_DIR` set  
-4. else `~/.xai-oauth/daemon.sock`  
-5. else `$TMPDIR/xai-oauth/daemon.sock` (home unavailable)
+3. else (Unix) `$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` if `XDG_RUNTIME_DIR` set  
+4. else (Unix) `~/.xai-oauth/daemon.sock`  
+5. else (Unix) `$TMPDIR/xai-oauth/daemon.sock` (home unavailable)
 
-On `serve` bind: parent directory must be mode **0700** **and owned by the current UID**
-(else listen fails — refuse foreign/group-writable parents, especially under `$TMPDIR`);
-socket file mode **0600**. An existing socket file at the path is first probed
-with a connect: if something still accepts, `serve` refuses (a live daemon is
-never silently orphaned); only genuinely stale leftovers are removed.
-On shutdown, the path is removed best-effort.
+On Windows, the default (steps 3–5) is `%LOCALAPPDATA%\xai-oauth\daemon.sock`
+(`os.UserCacheDir`).
+
+On `serve` bind (Unix): parent directory must be mode **0700** **and owned by
+the current UID** (else listen fails — refuse foreign/group-writable parents,
+especially under `$TMPDIR`); socket file mode **0600**. On Windows POSIX modes
+do not apply; isolation relies on the parent directory's NTFS ACLs (see
+[SECURITY.md](../SECURITY.md)). On every platform an existing socket file at
+the path is first probed with a connect: if something still accepts, `serve`
+refuses (a live daemon is never silently orphaned); only genuinely stale
+leftovers are removed. On shutdown, the path is removed best-effort.
 
 ### 2.4 `serve` lifecycle
 
@@ -76,8 +82,9 @@ On shutdown, the path is removed best-effort.
    `logout` first (avoids orphaning a previous token-holding process).  
 3. Device-code OAuth against `auth.x.ai` (may open browser unless `--no-browser`).  
 4. Print socket / secret (if generated) to stderr (**not** “serving” yet).  
-5. **Default:** re-exec a detached daemon child (`setsid`, stdout/stderr →
-   `/dev/null`); pass **secret + tokens** once via stdin JSON handoff (never on
+5. **Default:** re-exec a detached daemon child (`setsid` on Unix;
+   `DETACHED_PROCESS` on Windows; stdout/stderr → null device); pass
+   **secret + tokens** once via stdin JSON handoff (never on
    child argv, never on disk; `XAI_OAUTH_SECRET` is stripped from the child's
    environment); parent waits until secret-authenticated
    `GET /status` reports `state=ready`, prints pid, then **exits 0**.  

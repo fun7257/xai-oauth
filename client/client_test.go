@@ -1,5 +1,3 @@
-//go:build unix
-
 package client
 
 import (
@@ -118,14 +116,6 @@ func TestNewRequiresSecretEnv(t *testing.T) {
 	_, err := New(Config{SocketPath: "/tmp/x.sock"})
 	if err == nil {
 		t.Fatal("expected secret required")
-	}
-}
-
-func TestDefaultSocketPath(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", "/run/user/1000")
-	p := DefaultSocketPath()
-	if p != "/run/user/1000/xai-oauth/daemon.sock" {
-		t.Fatalf("got %q", p)
 	}
 }
 

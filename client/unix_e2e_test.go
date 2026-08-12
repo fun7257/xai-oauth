@@ -1,5 +1,3 @@
-//go:build unix
-
 package client_test
 
 import (
@@ -18,10 +16,14 @@ import (
 
 // End-to-end: real ListenUnix + Server.Handler + client over UDS (shipped path).
 func TestClientOverUnixSocket_E2E(t *testing.T) {
-	// Short path: macOS AF_UNIX sun_path is ~104 bytes.
+	// Short path: macOS AF_UNIX sun_path is ~104 bytes. Fall back to the OS
+	// temp dir where /tmp does not exist (Windows).
 	dir, err := os.MkdirTemp("/tmp", "xo-")
 	if err != nil {
-		t.Fatal(err)
+		dir, err = os.MkdirTemp("", "xo-")
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	sock := filepath.Join(dir, "s.sock")

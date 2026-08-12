@@ -1,4 +1,4 @@
-# Build Linux and macOS binaries on version tags (v*). Windows is not supported.
+# Build Linux, macOS, and Windows binaries on version tags (v*).
 name: Release
 
 on:
@@ -31,17 +31,21 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          # Supported platforms only: Linux and macOS (Unix domain sockets).
+          # AF_UNIX platforms: Linux, macOS, Windows 10 1803+/Server 2019+.
           targets="
             linux/amd64
             linux/arm64
             darwin/amd64
             darwin/arm64
+            windows/amd64
+            windows/arm64
           "
           for t in $targets; do
             GOOS=${t%/*}
             GOARCH=${t#*/}
-            out="dist/xai-oauth_${VERSION}_${GOOS}_${GOARCH}"
+            ext=""
+            [ "$GOOS" = "windows" ] && ext=".exe"
+            out="dist/xai-oauth_${VERSION}_${GOOS}_${GOARCH}${ext}"
             echo "Building $out"
             GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 \
               go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
@@ -49,14 +53,18 @@ jobs:
             (
               cd dist
               base="xai-oauth_${VERSION}_${GOOS}_${GOARCH}"
-              tar -czf "${base}.tar.gz" "$(basename "$out")"
+              if [ "$GOOS" = "windows" ]; then
+                zip -q "${base}.zip" "$(basename "$out")"
+              else
+                tar -czf "${base}.tar.gz" "$(basename "$out")"
+              fi
               rm -f "$(basename "$out")"
             )
           done
           ls -la dist
           (
             cd dist
-            sha256sum *.tar.gz > SHA256SUMS
+            sha256sum *.tar.gz *.zip > SHA256SUMS
           )
           cat dist/SHA256SUMS
 
@@ -68,6 +76,7 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*.tar.gz
+            dist/*.zip
             dist/SHA256SUMS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

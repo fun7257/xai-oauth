@@ -37,9 +37,10 @@ OAuth 使用**公开**设备码 client id（应用内无 client secret）。xAI 
 
 - Go **1.26+**（见 `go.mod`）
 - SuperGrok 或 X Premium+ 等 xAI 要求的 OAuth API 权限
-- **Linux 或 macOS**（Unix domain socket）
+- **Linux、macOS 或 Windows 10 1803+ / Server 2019+**（AF_UNIX socket）
 
-**不支持 Windows**（无 CLI / SDK / 发布包）。控制面与 SDK **仅** UDS，无 Named Pipe / TCP 回退。
+控制面与 SDK 在所有平台上都**仅**使用 Unix domain socket（AF_UNIX），无 Named Pipe / TCP 回退。
+Windows 上按用户隔离依赖默认 `%LOCALAPPDATA%\xai-oauth` 目录的 NTFS ACL（而非 POSIX 权限位），详见 [SECURITY.md](SECURITY.md)。
 
 ## 安装
 
@@ -49,7 +50,7 @@ make build                 # → ./xai-oauth
 # 或: make install         # → ~/.local/bin/xai-oauth
 ```
 
-打 `v*` tag 后，GitHub Actions 会构建 **Linux / macOS** 二进制并发布
+打 `v*` tag 后，GitHub Actions 会构建 **Linux / macOS / Windows** 二进制并发布
 （见 [.github/workflows/release.yml](.github/workflows/release.yml)）。
 
 ## 使用
@@ -73,6 +74,8 @@ export XAI_OAUTH_SECRET='…'   # 若 serve 打印了生成的 secret，请保�
 2. `$XDG_RUNTIME_DIR/xai-oauth/daemon.sock`（若已设置）
 3. `~/.xai-oauth/daemon.sock`
 4. 若无法解析 home：`$TMPDIR/xai-oauth/daemon.sock`（多用户主机上较弱，请显式设路径）
+
+Windows 默认：`%LOCALAPPDATA%\xai-oauth\daemon.sock`。
 
 | 命令 | 作用 |
 |------|------|
@@ -140,10 +143,8 @@ make cover
 
 | Workflow | 触发 | 内容 |
 |----------|------|------|
-| [CI](.github/workflows/ci.yml) | `main` 的 push/PR、**每日定时**、手动 | Ubuntu/macOS 上 `make check` + race；交叉编译 Linux/macOS（定时/手动会上传 artifact） |
+| [CI](.github/workflows/ci.yml) | `main` 的 push/PR、**每日定时**、手动 | Ubuntu/macOS 上 `make check` + race；Windows 上 vet/test/race；交叉编译 Linux/macOS/Windows（定时/手动会上传 artifact） |
 | [Release](.github/workflows/release.yml) | tag `v*` | check + 发布二进制 |
-
-不构建、不测试 Windows。
 
 ## 许可证
 

@@ -1,9 +1,7 @@
-//go:build unix
-
 // Package client is the SDK for the local xai-oauth token sidecar.
 //
-// Transport is Unix domain socket only (HTTP over UDS).
-// Linux and macOS only — Windows is not supported.
+// Transport is Unix domain socket only (HTTP over AF_UNIX).
+// Supported on Linux, macOS, and Windows 10 1803+ / Server 2019+.
 //
 // The local API secret is read only from the environment variable
 // XAI_OAUTH_SECRET (same as the CLI). There is no Config field for it.
@@ -51,21 +49,6 @@ type Client struct {
 	secret string
 	http   *http.Client
 	socket string
-}
-
-// DefaultSocketPath returns the default daemon socket path:
-//  1. $XDG_RUNTIME_DIR/xai-oauth/daemon.sock if XDG_RUNTIME_DIR is set
-//  2. ~/.xai-oauth/daemon.sock if home is available
-//  3. $TMPDIR/xai-oauth/daemon.sock otherwise (last resort)
-func DefaultSocketPath() string {
-	if runtime := strings.TrimSpace(os.Getenv("XDG_RUNTIME_DIR")); runtime != "" {
-		return filepath.Join(runtime, "xai-oauth", "daemon.sock")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return filepath.Join(os.TempDir(), "xai-oauth", "daemon.sock")
-	}
-	return filepath.Join(home, ".xai-oauth", "daemon.sock")
 }
 
 // New builds a Client. The local secret is required and taken only from

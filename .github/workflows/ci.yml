@@ -26,7 +26,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Unix-only project (//go:build unix); no Windows runners.
         os: [ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
@@ -46,9 +45,38 @@ jobs:
       - name: Build host binary
         run: make build VERSION=ci
 
+  test-windows:
+    # AF_UNIX control plane on Windows (Server 2019+ supports unix sockets).
+    # gofmt is platform-independent; the fmt-check runs in the unix jobs.
+    name: Test (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      - name: Vet and test
+        shell: bash
+        run: |
+          set -euo pipefail
+          go vet ./...
+          go test ./...
+
+      - name: Race detector
+        shell: bash
+        run: go test -race ./...
+
+      - name: Build host binary
+        shell: bash
+        run: go build -trimpath -ldflags "-s -w -X main.version=ci" -o xai-oauth.exe ./cmd/xai-oauth
+
   build:
     name: Cross-build
-    needs: test
+    needs: [test, test-windows]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -59,7 +87,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Cross-compile Linux / macOS
+      - name: Cross-compile Linux / macOS / Windows
         env:
           VERSION: ${{ github.sha }}
         run: |
@@ -70,11 +98,15 @@ jobs:
             linux/arm64
             darwin/amd64
             darwin/arm64
+            windows/amd64
+            windows/arm64
           "
           for t in $targets; do
             GOOS=${t%/*}
             GOARCH=${t#*/}
-            out="dist/xai-oauth_${GOOS}_${GOARCH}"
+            ext=""
+            [ "$GOOS" = "windows" ] && ext=".exe"
+            out="dist/xai-oauth_${GOOS}_${GOARCH}${ext}"
             echo "Building $out"
             GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 \
               go build -trimpath -ldflags "-s -w -X main.version=ci-${VERSION:0:7}" \
