@@ -119,6 +119,22 @@ func TestNewRequiresSecretEnv(t *testing.T) {
 	}
 }
 
+func TestGetUnreachableSentinel(t *testing.T) {
+	t.Setenv(EnvSecret, "s")
+	sock := filepath.Join(shortTempDir(t), "absent.sock")
+	c, err := New(Config{SocketPath: sock})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.Get(context.Background())
+	if !errors.Is(err, ErrUnreachable) {
+		t.Fatalf("err = %v, want ErrUnreachable", err)
+	}
+	if err := c.Health(context.Background()); !errors.Is(err, ErrUnreachable) {
+		t.Fatalf("health err = %v, want ErrUnreachable", err)
+	}
+}
+
 func TestStatusLogoutReadyHealth(t *testing.T) {
 	t.Setenv(EnvSecret, "s")
 	var loggedOut bool
@@ -166,8 +182,11 @@ func TestStatusLogoutReadyHealth(t *testing.T) {
 		t.Fatalf("ready ok=%v state=%s err=%v", ok, state, err)
 	}
 	st, err := c.Status(ctx)
-	if err != nil || st.State != "ready" {
+	if err != nil || st.State != StateReady {
 		t.Fatalf("status %+v err=%v", st, err)
+	}
+	if !st.HasExpiry || st.ExpiresAt.Year() != 2099 {
+		t.Fatalf("expires_at not parsed: %+v", st)
 	}
 	if err := c.Logout(ctx); err != nil {
 		t.Fatal(err)
