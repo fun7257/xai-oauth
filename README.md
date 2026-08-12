@@ -136,10 +136,19 @@ func main() {
 }
 ```
 
-Other methods: `Status`, `Ready`, `Health`, `Logout`, `SocketPath`.
+Or let the SDK inject the bearer for you — only `https://…x.ai` requests get
+the token; every other host passes through untouched:
 
-Sentinel errors: `client.ErrUnauthorized`, `ErrReauthRequired`, `ErrTierDenied`,
-`ErrUnavailable` (use `errors.Is`).
+```go
+hc := c.HTTPClient()
+resp, err := hc.Get("https://api.x.ai/v1/models")
+```
+
+Other methods: `Status`, `Ready`, `WaitReady` (block until the daemon is
+ready), `Health`, `Logout`, `SocketPath`, `Transport`, `CloseIdleConnections`.
+
+Sentinel errors: `client.ErrUnreachable` (daemon down), `ErrUnauthorized`,
+`ErrReauthRequired`, `ErrTierDenied`, `ErrUnavailable` (use `errors.Is`).
 
 ### Local HTTP API (over the Unix socket)
 

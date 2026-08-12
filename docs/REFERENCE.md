@@ -218,7 +218,8 @@ c, err := client.New(client.Config{
 | `SocketPath` | No | `Config.SocketPath` → `XAI_OAUTH_SOCKET` → `DefaultSocketPath()` |
 | *(secret)* | **Yes** | **env only** `XAI_OAUTH_SECRET` (no Config field) |
 
-Fixed client timeout: **30s**. No injectable `http.Client`, no TCP `BaseURL`.
+Fixed client timeout: **30s** (shorten per call via ctx). No injectable
+`http.Client`, no TCP `BaseURL`. `*Client` is safe for concurrent use.
 
 ### 4.2 Methods (`*Client`)
 
@@ -226,10 +227,14 @@ Fixed client timeout: **30s**. No injectable `http.Client`, no TCP `BaseURL`.
 |--------|------|---------|
 | `Get(ctx) (string, error)` | `GET /token` | access token |
 | `Status(ctx) (*Status, error)` | `GET /status` | status struct |
-| `Ready(ctx) (bool, string, error)` | `GET /ready` | ready flag + state |
+| `Ready(ctx) (bool, State, error)` | `GET /ready` | ready flag + state |
+| `WaitReady(ctx) error` | polls `GET /status` | nil once ready; fails fast on bad secret / sticky states |
 | `Health(ctx) error` | `GET /health` | nil if alive |
 | `Logout(ctx) error` | `POST /logout` | nil on success |
+| `Transport(base) http.RoundTripper` | — | bearer-injecting transport (see §4.6) |
+| `HTTPClient() *http.Client` | — | `&http.Client{Transport: c.Transport(nil)}` |
 | `SocketPath() string` | — | configured socket path |
+| `CloseIdleConnections()` | — | drop idle daemon connections |
 
 ### 4.2.1 Package helpers
 
@@ -238,17 +243,22 @@ Fixed client timeout: **30s**. No injectable `http.Client`, no TCP `BaseURL`.
 | `New(Config) (*Client, error)` | client (`XAI_OAUTH_SECRET` required) |
 | `DefaultSocketPath() string` | default UDS path (see §2.3) |
 
-### 4.3 `client.Status` struct
+### 4.3 `client.Status` struct and `State`
 
 ```go
+type State string // StateReady | StateReauthRequired | StateTierDenied
+                  // (Ready only: StateDegraded | StateNotReady)
+
 type Status struct {
-    State      string // ready | reauth_required | tier_denied
+    State      State
     HasExpiry  bool
-    ExpiresAt  string // RFC3339
-    TokenValid bool   // access token hard-valid right now
+    ExpiresAt  time.Time // zero when !HasExpiry
+    TokenValid bool      // access token hard-valid right now
     LastError  string
 }
 ```
+
+Comparisons against string literals still compile (`st.State == "ready"`).
 
 ### 4.4 Sentinel errors
 
@@ -256,12 +266,11 @@ Use `errors.Is`:
 
 | Variable | When |
 |----------|------|
+| `ErrUnreachable` | Daemon socket not reachable (not running / wrong path) |
 | `ErrUnauthorized` | Local secret rejected |
 | `ErrReauthRequired` | Need new `serve` / device login |
 | `ErrTierDenied` | Tier/entitlement denial |
 | `ErrUnavailable` | Transient failure; retry later |
-
-Dial failures (daemon down) are ordinary wrapped network errors, not the sentinels above.
 
 ### 4.5 Minimal app pattern
 
@@ -270,10 +279,25 @@ Dial failures (daemon down) are ordinary wrapped network errors, not the sentine
 c, err := client.New(client.Config{})
 if err != nil { /* handle */ }
 tok, err := c.Get(ctx)
-if err != nil { /* errors.Is reauth / unavailable / ... */ }
+if err != nil { /* errors.Is unreachable / reauth / unavailable / ... */ }
 // req.Header.Set("Authorization", "Bearer "+tok)
 // http to https://api.x.ai/...
 ```
+
+### 4.6 Bearer-injecting transport
+
+```go
+hc := c.HTTPClient() // or &http.Client{Transport: c.Transport(base)}
+resp, err := hc.Get("https://api.x.ai/v1/models")
+```
+
+- Injects `Authorization: Bearer <access_token>` (fresh from the daemon per
+  request; the daemon caches/refreshes) **only** for `https` requests whose
+  host is `x.ai` or a true subdomain — the bearer can never leak to foreign
+  origins.
+- Requests to other schemes/hosts pass through unchanged without a token
+  fetch; an existing `Authorization` header is never overwritten.
+- The transport never mutates the caller's request (clones before injecting).
 
 ---
 

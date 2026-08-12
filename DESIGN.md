@@ -112,7 +112,9 @@ tok, err := c.Get(ctx)
 ```
 
 - **仅** Unix socket + HTTP；`Config` 只有 `SocketPath`；secret **仅** `XAI_OAUTH_SECRET`  
-- 方法：`Get` / `Status` / `Ready` / `Health` / `Logout` / `SocketPath`  
+- 方法：`Get` / `Status` / `Ready` / `WaitReady` / `Health` / `Logout` / `SocketPath` / `Transport` / `HTTPClient` / `CloseIdleConnections`  
+- `Transport`/`HTTPClient`：自动注入 Bearer，**仅**对 https 的 x.ai（真子域）请求生效，其余请求原样透传（token 不外泄）  
+- 哨兵错误含 `ErrUnreachable`（daemon 未运行）；`WaitReady` 对错 secret / 粘性失败快速失败  
 - 无包级 `Get`、无 `NewWithoutSecret`、无 TCP `BaseURL`
 
 ---

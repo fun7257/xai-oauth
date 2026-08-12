@@ -92,9 +92,14 @@ Windows 默认：`%LOCALAPPDATA%\xai-oauth\daemon.sock`。
 c, err := client.New(client.Config{})
 tok, err := c.Get(ctx)
 // Authorization: Bearer <tok> → api.x.ai
+
+// 或让 SDK 自动注入（仅对 https 的 x.ai 域生效，token 不会发给其它 host）：
+hc := c.HTTPClient()
+resp, err := hc.Get("https://api.x.ai/v1/models")
 ```
 
-其它方法：`Status`、`Ready`、`Health`、`Logout`、`SocketPath`。
+其它方法：`Status`、`Ready`、`WaitReady`（阻塞等 daemon 就绪）、`Health`、`Logout`、`SocketPath`、`Transport`、`CloseIdleConnections`。  
+哨兵错误新增 `ErrUnreachable`（daemon 未运行），配合 `errors.Is` 使用。
 
 ### 本机 HTTP（Unix socket 上）
 
