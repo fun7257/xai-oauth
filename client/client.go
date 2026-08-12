@@ -148,7 +148,10 @@ type Status struct {
 	State     string `json:"state"`
 	HasExpiry bool   `json:"has_expiry"`
 	ExpiresAt string `json:"expires_at,omitempty"`
-	LastError string `json:"last_error,omitempty"`
+	// TokenValid reports whether the daemon's access token is hard-valid
+	// right now; false may still mean /token succeeds via refresh.
+	TokenValid bool   `json:"token_valid"`
+	LastError  string `json:"last_error,omitempty"`
 }
 
 // Status calls GET /status.

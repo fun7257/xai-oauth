@@ -142,6 +142,73 @@ func TestInvalidGrantStickyNoRetry(t *testing.T) {
 	}
 }
 
+func TestReadyStates(t *testing.T) {
+	past := time.Now().Add(-time.Minute)
+	future := time.Now().Add(time.Hour)
+
+	cases := []struct {
+		name       string
+		s          *Session
+		wantReady  bool
+		wantReason string
+		wantValid  bool
+	}{
+		{
+			name:       "fresh token",
+			s:          &Session{accessToken: "at", refreshToken: "rt", expiresAt: future, hasExpiry: true, state: StateReady},
+			wantReady:  true,
+			wantReason: string(StateReady),
+			wantValid:  true,
+		},
+		{
+			name:       "expired with recorded refresh failure is degraded",
+			s:          &Session{accessToken: "at", refreshToken: "rt", expiresAt: past, hasExpiry: true, state: StateReady, lastError: "refresh_failed (HTTP 500)"},
+			wantReady:  false,
+			wantReason: ReadyReasonDegraded,
+			wantValid:  false,
+		},
+		{
+			name:       "expired but no failure yet (refresh pending)",
+			s:          &Session{accessToken: "at", refreshToken: "rt", expiresAt: past, hasExpiry: true, state: StateReady},
+			wantReady:  true,
+			wantReason: string(StateReady),
+			wantValid:  false,
+		},
+		{
+			name:       "no expiry known refreshes every time",
+			s:          &Session{accessToken: "at", refreshToken: "rt", state: StateReady},
+			wantReady:  true,
+			wantReason: string(StateReady),
+			wantValid:  false,
+		},
+		{
+			name:       "sticky reauth",
+			s:          &Session{state: StateReauthRequired, lastError: "logged_out"},
+			wantReady:  false,
+			wantReason: string(StateReauthRequired),
+			wantValid:  false,
+		},
+		{
+			name:       "sticky tier denied",
+			s:          &Session{state: StateTierDenied, lastError: "tier_denied (HTTP 403)"},
+			wantReady:  false,
+			wantReason: string(StateTierDenied),
+			wantValid:  false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ready, reason := tc.s.Ready()
+			if ready != tc.wantReady || reason != tc.wantReason {
+				t.Fatalf("Ready() = (%v, %q), want (%v, %q)", ready, reason, tc.wantReady, tc.wantReason)
+			}
+			if got := tc.s.Status().TokenValid; got != tc.wantValid {
+				t.Fatalf("Status().TokenValid = %v, want %v", got, tc.wantValid)
+			}
+		})
+	}
+}
+
 type errString string
 
 func (e errString) Error() string { return string(e) }

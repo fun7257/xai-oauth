@@ -40,14 +40,14 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleReady(w http.ResponseWriter, _ *http.Request) {
-	st := s.Session.Status()
-	if st.State == session.StateReady {
+	ready, reason := s.Session.Ready()
+	if ready {
 		writeJSON(w, http.StatusOK, map[string]any{"ready": true})
 		return
 	}
 	writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 		"ready": false,
-		"state": st.State,
+		"state": reason,
 	})
 }
 
@@ -57,8 +57,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	st := s.Session.Status()
 	body := map[string]any{
-		"state":      st.State,
-		"has_expiry": st.HasExpiry,
+		"state":       st.State,
+		"has_expiry":  st.HasExpiry,
+		"token_valid": st.TokenValid,
 	}
 	if st.HasExpiry && !st.ExpiresAt.IsZero() {
 		body["expires_at"] = st.ExpiresAt.UTC().Format(time.RFC3339)
