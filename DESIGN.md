@@ -103,14 +103,14 @@ Authorization: Bearer <local_secret>
 ```go
 import "github.com/fun7257/xai-oauth/client"
 
+// 须 export XAI_OAUTH_SECRET（SDK 只认环境变量）
 c, err := client.New(client.Config{
-    Secret: os.Getenv("XAI_OAUTH_SECRET"),
     // SocketPath 默认：XAI_OAUTH_SOCKET 或 DefaultSocketPath()
 })
 tok, err := c.Get(ctx)
 ```
 
-- **仅** Unix socket + HTTP；`Config` 只有 `SocketPath` + `Secret`  
+- **仅** Unix socket + HTTP；`Config` 只有 `SocketPath`；secret **仅** `XAI_OAUTH_SECRET`  
 - 方法：`Get` / `Status` / `Ready` / `Health` / `Logout` / `SocketPath`  
 - 无包级 `Get`、无 `NewWithoutSecret`、无 TCP `BaseURL`
 

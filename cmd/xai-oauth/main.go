@@ -68,7 +68,8 @@ Flags (per command):
   --foreground   serve: stay in the terminal after login (do not background)
 
 SDK: github.com/fun7257/xai-oauth/client
-  c, _ := client.New(client.Config{}) // Secret from XAI_OAUTH_SECRET, or Config.Secret
+  // export XAI_OAUTH_SECRET=…  (required; only source for secret)
+  c, _ := client.New(client.Config{})
   tok, _ := c.Get(ctx)
 `)
 }

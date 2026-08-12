@@ -111,14 +111,13 @@ After logout or reauth, run `serve` again.
 ```go
 import (
     "context"
-    "os"
 
     "github.com/fun7257/xai-oauth/client"
 )
 
 func main() {
+    // Secret: only from env XAI_OAUTH_SECRET (required).
     c, err := client.New(client.Config{
-        Secret: os.Getenv("XAI_OAUTH_SECRET"),
         // SocketPath defaults to XAI_OAUTH_SOCKET or DefaultSocketPath()
     })
     if err != nil {

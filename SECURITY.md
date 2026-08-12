@@ -78,9 +78,8 @@ the Go SDK still sends the secret on every call.
   written to disk by this tool. Stderr may still enter terminal scrollback or
   session recorders.
 - Background daemon children receive the secret once via stdin handoff (not env,
-  not argv).
-- Go SDK may also take `Config.Secret` in-process; empty falls back to
-  `XAI_OAUTH_SECRET`.
+  not argv on the child).
+- Go SDK reads the secret **only** from `XAI_OAUTH_SECRET` (no `Config.Secret`).
 - `xai-oauth token` prints a full OAuth **access token** on stdout — treat that
   stream as secret (shell history, CI logs, screen shares).
 - Do not commit secrets or put them in public bug reports.

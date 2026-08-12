@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fun7257/xai-oauth/client"
 	"github.com/fun7257/xai-oauth/internal/protocol"
 	"github.com/fun7257/xai-oauth/internal/server"
 	"github.com/fun7257/xai-oauth/internal/session"
@@ -129,6 +130,7 @@ func TestWaitDaemonReadyRequiresAuth(t *testing.T) {
 	})
 
 	// Old waitDaemonReady would succeed on /health; new one must fail.
+	t.Setenv(client.EnvSecret, wantSecret)
 	err = waitDaemonReady(sock, wantSecret, 400*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected ready to fail against unauthenticated listener")
@@ -142,6 +144,7 @@ func TestWaitDaemonReadyWithStatus(t *testing.T) {
 	}
 	sock := filepath.Join(dir, "s.sock")
 	const sec = "status-secret"
+	t.Setenv(client.EnvSecret, sec)
 
 	sess, err := session.NewFromLogin(nil, &protocol.LoginResult{
 		Tokens: protocol.TokenResponse{

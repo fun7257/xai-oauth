@@ -27,7 +27,7 @@ func shortTempDir(t *testing.T) string {
 	return dir
 }
 
-func startUnixDaemon(t *testing.T, secret string, mux *http.ServeMux) string {
+func startUnixDaemon(t *testing.T, mux *http.ServeMux) string {
 	t.Helper()
 	sock := filepath.Join(shortTempDir(t), "s.sock")
 	ln, err := net.Listen("unix", sock)
@@ -40,11 +40,11 @@ func startUnixDaemon(t *testing.T, secret string, mux *http.ServeMux) string {
 		_ = srv.Close()
 		_ = os.Remove(sock)
 	})
-	_ = secret
 	return sock
 }
 
 func TestGetTokenOK(t *testing.T) {
+	t.Setenv(EnvSecret, "test-secret")
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /token", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-secret" {
@@ -57,9 +57,9 @@ func TestGetTokenOK(t *testing.T) {
 			"token_type":   "Bearer",
 		})
 	})
-	sock := startUnixDaemon(t, "test-secret", mux)
+	sock := startUnixDaemon(t, mux)
 
-	c, err := New(Config{SocketPath: sock, Secret: "test-secret"})
+	c, err := New(Config{SocketPath: sock})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +73,7 @@ func TestGetTokenOK(t *testing.T) {
 }
 
 func TestGetReauth(t *testing.T) {
+	t.Setenv(EnvSecret, "s")
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /token", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -81,9 +82,9 @@ func TestGetReauth(t *testing.T) {
 			"message": "restart",
 		})
 	})
-	sock := startUnixDaemon(t, "s", mux)
+	sock := startUnixDaemon(t, mux)
 
-	c, err := New(Config{SocketPath: sock, Secret: "s"})
+	c, err := New(Config{SocketPath: sock})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,14 +95,15 @@ func TestGetReauth(t *testing.T) {
 }
 
 func TestGetUnauthorized(t *testing.T) {
+	t.Setenv(EnvSecret, "wrong")
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /token", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
 	})
-	sock := startUnixDaemon(t, "right", mux)
+	sock := startUnixDaemon(t, mux)
 
-	c, err := New(Config{SocketPath: sock, Secret: "wrong"})
+	c, err := New(Config{SocketPath: sock})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +113,7 @@ func TestGetUnauthorized(t *testing.T) {
 	}
 }
 
-func TestNewRequiresSecret(t *testing.T) {
+func TestNewRequiresSecretEnv(t *testing.T) {
 	t.Setenv(EnvSecret, "")
 	_, err := New(Config{SocketPath: "/tmp/x.sock"})
 	if err == nil {
@@ -128,6 +130,7 @@ func TestDefaultSocketPath(t *testing.T) {
 }
 
 func TestStatusLogoutReadyHealth(t *testing.T) {
+	t.Setenv(EnvSecret, "s")
 	var loggedOut bool
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
@@ -158,9 +161,9 @@ func TestStatusLogoutReadyHealth(t *testing.T) {
 		loggedOut = true
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
-	sock := startUnixDaemon(t, "s", mux)
+	sock := startUnixDaemon(t, mux)
 
-	c, err := New(Config{SocketPath: sock, Secret: "s"})
+	c, err := New(Config{SocketPath: sock})
 	if err != nil {
 		t.Fatal(err)
 	}

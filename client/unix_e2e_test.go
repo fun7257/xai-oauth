@@ -26,6 +26,7 @@ func TestClientOverUnixSocket_E2E(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	sock := filepath.Join(dir, "s.sock")
 	const secret = "e2e-secret"
+	t.Setenv(client.EnvSecret, secret)
 
 	sess, err := session.NewFromLogin(nil, &protocol.LoginResult{
 		Tokens: protocol.TokenResponse{
@@ -59,7 +60,7 @@ func TestClientOverUnixSocket_E2E(t *testing.T) {
 		_ = httpSrv.Shutdown(ctx)
 	})
 
-	c, err := client.New(client.Config{SocketPath: sock, Secret: secret})
+	c, err := client.New(client.Config{SocketPath: sock})
 	if err != nil {
 		t.Fatal(err)
 	}

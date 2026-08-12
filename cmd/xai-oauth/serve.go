@@ -142,19 +142,42 @@ func printLoginCredentials(sockPath, sec string, generated bool) {
 // refuseIfSocketBusy fails if something already answers on the socket, so a
 // second serve cannot orphan a previous token-holding process.
 func refuseIfSocketBusy(sockPath, sec string) error {
-	c, err := client.New(client.Config{SocketPath: sockPath, Secret: sec})
-	if err != nil {
+	var busy error
+	_ = withSecretEnv(sec, func() error {
+		c, err := client.New(client.Config{SocketPath: sockPath})
+		if err != nil {
+			return nil
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+		if err := c.Health(ctx); err != nil {
+			return nil
+		}
+		if st, err := c.Status(ctx); err == nil && st != nil {
+			busy = fmt.Errorf("daemon already running on %s (state=%s); run: xai-oauth logout", sockPath, st.State)
+			return nil
+		}
+		busy = fmt.Errorf("socket %s is already in use (wrong secret or foreign listener); logout or free the path", sockPath)
 		return nil
+	})
+	return busy
+}
+
+// withSecretEnv temporarily sets XAI_OAUTH_SECRET so client.New (env-only)
+// can authenticate. Used when serve generated a secret not yet exported.
+func withSecretEnv(sec string, fn func() error) error {
+	prev, had := os.LookupEnv(client.EnvSecret)
+	if err := os.Setenv(client.EnvSecret, sec); err != nil {
+		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-	if err := c.Health(ctx); err != nil {
-		return nil
-	}
-	if st, err := c.Status(ctx); err == nil && st != nil {
-		return fmt.Errorf("daemon already running on %s (state=%s); run: xai-oauth logout", sockPath, st.State)
-	}
-	return fmt.Errorf("socket %s is already in use (wrong secret or foreign listener); logout or free the path", sockPath)
+	defer func() {
+		if had {
+			_ = os.Setenv(client.EnvSecret, prev)
+		} else {
+			_ = os.Unsetenv(client.EnvSecret)
+		}
+	}()
+	return fn()
 }
 
 func runServer(sockPath, sec string, sess *session.Session) error {
@@ -285,24 +308,31 @@ func waitDaemonReady(sockPath, sec string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	var last error
 	for time.Now().Before(deadline) {
-		c, err := client.New(client.Config{SocketPath: sockPath, Secret: sec})
-		if err != nil {
-			last = err
-			time.Sleep(30 * time.Millisecond)
-			continue
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-		st, err := c.Status(ctx)
-		cancel()
-		if err == nil && st != nil && st.State == string(session.StateReady) {
+		err := withSecretEnv(sec, func() error {
+			c, err := client.New(client.Config{SocketPath: sockPath})
+			if err != nil {
+				last = err
+				return err
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+			st, err := c.Status(ctx)
+			cancel()
+			if err == nil && st != nil && st.State == string(session.StateReady) {
+				return nil
+			}
+			if err != nil {
+				last = err
+				return err
+			}
+			if st != nil {
+				last = fmt.Errorf("daemon state %q", st.State)
+			} else {
+				last = fmt.Errorf("empty status")
+			}
+			return last
+		})
+		if err == nil {
 			return nil
-		}
-		if err != nil {
-			last = err
-		} else if st != nil {
-			last = fmt.Errorf("daemon state %q", st.State)
-		} else {
-			last = fmt.Errorf("empty status")
 		}
 		time.Sleep(30 * time.Millisecond)
 	}

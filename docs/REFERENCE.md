@@ -190,16 +190,16 @@ Import path: module `github.com/fun7257/xai-oauth`, package `client`.
 ### 4.1 Construction
 
 ```go
+// export XAI_OAUTH_SECRET=…  (required; only secret source)
 c, err := client.New(client.Config{
     SocketPath: "", // optional; env or DefaultSocketPath()
-    Secret:     os.Getenv("XAI_OAUTH_SECRET"),
 })
 ```
 
 | Field | Required | Resolution |
 |-------|----------|------------|
-| `Secret` | **Yes** (after resolve) | `Config.Secret` → `XAI_OAUTH_SECRET` |
 | `SocketPath` | No | `Config.SocketPath` → `XAI_OAUTH_SOCKET` → `DefaultSocketPath()` |
+| *(secret)* | **Yes** | **env only** `XAI_OAUTH_SECRET` (no Config field) |
 
 Fixed client timeout: **30s**. No injectable `http.Client`, no TCP `BaseURL`.
 
@@ -218,7 +218,7 @@ Fixed client timeout: **30s**. No injectable `http.Client`, no TCP `BaseURL`.
 
 | Function | Returns |
 |----------|---------|
-| `New(Config) (*Client, error)` | client (secret required) |
+| `New(Config) (*Client, error)` | client (`XAI_OAUTH_SECRET` required) |
 | `DefaultSocketPath() string` | default UDS path (see §2.3) |
 
 ### 4.3 `client.Status` struct
@@ -248,7 +248,8 @@ Dial failures (daemon down) are ordinary wrapped network errors, not the sentine
 ### 4.5 Minimal app pattern
 
 ```go
-c, err := client.New(client.Config{Secret: secret})
+// os.Setenv("XAI_OAUTH_SECRET", "…") or export in the shell
+c, err := client.New(client.Config{})
 if err != nil { /* handle */ }
 tok, err := c.Get(ctx)
 if err != nil { /* errors.Is reauth / unavailable / ... */ }
@@ -262,7 +263,7 @@ if err != nil { /* errors.Is reauth / unavailable / ... */ }
 
 | Variable | Used by | Purpose |
 |----------|---------|---------|
-| `XAI_OAUTH_SECRET` | CLI (required for control; serve generates if empty), SDK fallback | Local API secret (CLI has no flag) |
+| `XAI_OAUTH_SECRET` | CLI + SDK (only secret source; serve generates if empty) | Local API secret |
 | `XAI_OAUTH_SOCKET` | CLI, SDK | Unix socket path |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` / `NO_PROXY` (and lowercase) | `serve` egress only | Outbound OAuth to `auth.x.ai` |
 

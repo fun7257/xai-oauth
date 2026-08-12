@@ -5,7 +5,11 @@
 // Transport is Unix domain socket only (HTTP over UDS).
 // Linux and macOS only — Windows is not supported.
 //
-//	c, err := client.New(client.Config{Secret: os.Getenv("XAI_OAUTH_SECRET")})
+// The local API secret is read only from the environment variable
+// XAI_OAUTH_SECRET (same as the CLI). There is no Config field for it.
+//
+//	// export XAI_OAUTH_SECRET=…
+//	c, err := client.New(client.Config{})
 //	tok, err := c.Get(ctx)
 package client
 
@@ -26,6 +30,7 @@ const (
 	// EnvSocket is the Unix socket path for the daemon.
 	EnvSocket = "XAI_OAUTH_SOCKET"
 	// EnvSecret is the local API secret for authenticated routes.
+	// This is the only supported source for the client secret.
 	EnvSecret = "XAI_OAUTH_SECRET"
 
 	// httpHost is the synthetic URL origin for HTTP requests over a Unix socket.
@@ -39,9 +44,6 @@ type Config struct {
 	// SocketPath is the Unix domain socket path.
 	// Empty → XAI_OAUTH_SOCKET → DefaultSocketPath().
 	SocketPath string
-	// Secret is the local Bearer secret. Empty → XAI_OAUTH_SECRET.
-	// Required and must be non-empty after resolution.
-	Secret string
 }
 
 // Client talks to a running xai-oauth serve process over a Unix socket.
@@ -66,14 +68,12 @@ func DefaultSocketPath() string {
 	return filepath.Join(home, ".xai-oauth", "daemon.sock")
 }
 
-// New builds a Client. Secret is required (Config.Secret or XAI_OAUTH_SECRET).
+// New builds a Client. The local secret is required and taken only from
+// XAI_OAUTH_SECRET (no Config field).
 func New(cfg Config) (*Client, error) {
-	secret := strings.TrimSpace(cfg.Secret)
+	secret := strings.TrimSpace(os.Getenv(EnvSecret))
 	if secret == "" {
-		secret = strings.TrimSpace(os.Getenv(EnvSecret))
-	}
-	if secret == "" {
-		return nil, fmt.Errorf("xai-oauth client: secret is required (set Config.Secret or %s)", EnvSecret)
+		return nil, fmt.Errorf("xai-oauth client: secret is required (set env %s)", EnvSecret)
 	}
 
 	sock := strings.TrimSpace(cfg.SocketPath)

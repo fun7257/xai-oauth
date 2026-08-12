@@ -85,7 +85,8 @@ export XAI_OAUTH_SECRET='…'   # 若 serve 打印了生成的 secret，请保�
 ### Go SDK
 
 ```go
-c, err := client.New(client.Config{Secret: os.Getenv("XAI_OAUTH_SECRET")})
+// 须已 export XAI_OAUTH_SECRET（SDK 只读该环境变量）
+c, err := client.New(client.Config{})
 tok, err := c.Get(ctx)
 // Authorization: Bearer <tok> → api.x.ai
 ```

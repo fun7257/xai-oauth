@@ -21,10 +21,10 @@ func requireSecret() (string, error) {
 	return secret, nil
 }
 
-func daemonClient(socket, secret string) (*client.Client, error) {
+func daemonClient(socket string) (*client.Client, error) {
+	// Secret comes only from XAI_OAUTH_SECRET (see client.New).
 	return client.New(client.Config{
 		SocketPath: strings.TrimSpace(socket),
-		Secret:     secret,
 	})
 }
 
@@ -33,11 +33,10 @@ func cmdStatus(args []string) error {
 	if err := cf.parse(args); err != nil {
 		return err
 	}
-	secret, err := requireSecret()
-	if err != nil {
+	if _, err := requireSecret(); err != nil {
 		return err
 	}
-	c, err := daemonClient(*cf.socket, secret)
+	c, err := daemonClient(*cf.socket)
 	if err != nil {
 		return err
 	}
@@ -82,11 +81,10 @@ func cmdToken(args []string) error {
 	if err := cf.parse(args); err != nil {
 		return err
 	}
-	secret, err := requireSecret()
-	if err != nil {
+	if _, err := requireSecret(); err != nil {
 		return err
 	}
-	c, err := daemonClient(*cf.socket, secret)
+	c, err := daemonClient(*cf.socket)
 	if err != nil {
 		return err
 	}
@@ -105,11 +103,10 @@ func cmdLogout(args []string) error {
 	if err := cf.parse(args); err != nil {
 		return err
 	}
-	secret, err := requireSecret()
-	if err != nil {
+	if _, err := requireSecret(); err != nil {
 		return err
 	}
-	c, err := daemonClient(*cf.socket, secret)
+	c, err := daemonClient(*cf.socket)
 	if err != nil {
 		return err
 	}
