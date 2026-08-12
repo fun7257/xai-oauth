@@ -1,5 +1,3 @@
-//go:build unix
-
 package main
 
 import (
@@ -267,7 +265,7 @@ func spawnBackgroundDaemon(sockPath string, h *loginHandoff) (int, error) {
 	cmd.Env = daemonEnv(os.Environ())
 	cmd.Stdout = devNull
 	cmd.Stderr = devNull
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.SysProcAttr = daemonSysProcAttr()
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

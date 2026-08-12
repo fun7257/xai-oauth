@@ -1,5 +1,3 @@
-//go:build unix
-
 package main
 
 import (
@@ -62,7 +60,8 @@ Local API secret is env-only: XAI_OAUTH_SECRET (no --secret flag).
 serve generates one if unset and prints it once — export it for status/token/logout.
 
 Flags (per command):
-  --socket  path (default: $XDG_RUNTIME_DIR/…, else ~/.xai-oauth/…, else $TMPDIR/…)
+  --socket  path (default: $XDG_RUNTIME_DIR/…, else ~/.xai-oauth/…, else $TMPDIR/…;
+            Windows: %%LOCALAPPDATA%%\xai-oauth\daemon.sock)
             env: XAI_OAUTH_SOCKET
   --no-browser   serve: do not open the device-login browser (default: try open)
   --foreground   serve: stay in the terminal after login (do not background)
