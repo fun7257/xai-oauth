@@ -257,10 +257,3 @@ func tryOpenBrowser(u string) bool {
 	go func() { _ = cmd.Wait() }()
 	return true
 }
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}

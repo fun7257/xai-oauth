@@ -312,6 +312,10 @@ type call struct {
 	err error
 }
 
+// Do runs fn once per key; concurrent callers block and share the leader's
+// result. Late joiners cannot cancel via their own context — they wait on the
+// leader's call, bounded in practice by the IdP client timeout and the
+// caller-side HTTP timeouts.
 func (g *singleflight) Do(key string, fn func() (any, error)) (any, error, bool) {
 	g.mu.Lock()
 	if g.m == nil {
