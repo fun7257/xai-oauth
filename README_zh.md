@@ -44,14 +44,23 @@ Windows 上按用户隔离依赖默认 `%LOCALAPPDATA%\xai-oauth` 目录的 NTFS
 
 ## 安装
 
+源码构建（Go 1.26+）：
+
 ```bash
 cd xai-oauth
 make build                 # → ./xai-oauth
-# 或: make install         # → ~/.local/bin/xai-oauth
+# 或: make install         # → ~/.local/bin/xai-oauth（make uninstall 卸载）
+# 或不克隆仓库：
+go install github.com/fun7257/xai-oauth/cmd/xai-oauth@latest
 ```
 
-打 `v*` tag 后，GitHub Actions 会构建 **Linux / macOS / Windows** 二进制并发布
-（见 [.github/workflows/release.yml](.github/workflows/release.yml)）。
+或下载发布包：打 `v*` tag 后，GitHub Actions 会构建 **Linux / macOS（`.tar.gz`）/
+Windows（`.zip`）** 二进制并发布（见
+[.github/workflows/release.yml](.github/workflows/release.yml)）。使用前校验：
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+```
 
 ## 使用
 
@@ -81,9 +90,22 @@ Windows 默认：`%LOCALAPPDATA%\xai-oauth\daemon.sock`。
 |------|------|
 | `serve` | 设备码登录后**自动后台** daemon（UDS HTTP）；`--foreground` 保持前台 |
 | `status` / `token` / `logout` | 控制面（**必须** secret） |
-| `version` | 版本 |
+| `version` / `help` | 版本 / 用法 |
 
 **没有**独立 `login` 子命令；登录只在 `serve` 内完成。
+
+### Windows
+
+PowerShell 下命令相同，环境变量用 `$env:` 设置：
+
+```powershell
+.\xai-oauth.exe serve
+$env:XAI_OAUTH_SECRET = '…'   # 若 serve 打印了生成的 secret
+.\xai-oauth.exe status
+.\xai-oauth.exe logout        # 后台 daemon 无控制台，用 logout 停止
+```
+
+默认 socket：`%LOCALAPPDATA%\xai-oauth\daemon.sock`（需 Windows 10 1803+ / Server 2019+）。
 
 ### Go SDK
 
@@ -92,9 +114,14 @@ Windows 默认：`%LOCALAPPDATA%\xai-oauth\daemon.sock`。
 c, err := client.New(client.Config{})
 tok, err := c.Get(ctx)
 // Authorization: Bearer <tok> → api.x.ai
+
+// 或让 SDK 自动注入（仅对 https 的 x.ai 域生效，token 不会发给其它 host）：
+hc := c.HTTPClient()
+resp, err := hc.Get("https://api.x.ai/v1/models")
 ```
 
-其它方法：`Status`、`Ready`、`Health`、`Logout`、`SocketPath`。
+其它方法：`Status`、`Ready`、`WaitReady`（阻塞等 daemon 就绪）、`Health`、`Logout`、`SocketPath`、`Transport`、`CloseIdleConnections`。  
+哨兵错误新增 `ErrUnreachable`（daemon 未运行），配合 `errors.Is` 使用。
 
 ### 本机 HTTP（Unix socket 上）
 
@@ -125,9 +152,20 @@ OAuth **scope 写死在代码中**，不可通过 env 配置。
 设备登录使用公开 client id（见 `internal/protocol/constants.go`）。  
 这**不是**私钥式 API key，但上游策略仍可能限制或吊销。本项目**不声称**获得 xAI 官方背书。
 
+## 故障排查
+
+常见情况（完整表见 [docs/REFERENCE.md §7](docs/REFERENCE.md#7-troubleshooting)）：
+
+- `daemon: down` — `serve` 未运行，或 CLI 与 daemon 解析出的 socket 路径不同；两侧显式设 `XAI_OAUTH_SOCKET`。
+- `unauthorized` — `XAI_OAUTH_SECRET` 缺失或与 serve 进程不一致。
+- `reauth_required` — refresh token 失效或已 logout；重新 `serve`。
+- `socket … in use by a live process` — 旧 daemon 还在服务；先 `xai-oauth logout`。
+
+后台 daemon 按设计不写日志；诊断通道是 `xai-oauth status` 的 `last_error`。
+
 ## 引用手册
 
-命令、HTTP、SDK、环境变量完整表：**[docs/REFERENCE.md](docs/REFERENCE.md)**。
+命令、HTTP、SDK、环境变量、故障排查完整表：**[docs/REFERENCE.md](docs/REFERENCE.md)**。
 
 ## 开发
 

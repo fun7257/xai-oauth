@@ -302,45 +302,23 @@ func spawnBackgroundDaemon(sockPath string, h *loginHandoff) (int, error) {
 	return pid, nil
 }
 
-// waitDaemonReady requires a secret-authenticated GET /status with state ready.
-// Unauthenticated /health or a bare dial is not enough (avoids false ready on
-// a pre-existing foreign or old daemon).
+// waitDaemonReady requires a secret-authenticated GET /status with state ready
+// (client.WaitReady). Unauthenticated /health or a bare dial is not enough
+// (avoids false ready on a pre-existing foreign or old daemon); a rejected
+// secret or sticky reauth/tier state fails fast instead of polling out.
 func waitDaemonReady(sockPath, sec string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	var last error
-	for time.Now().Before(deadline) {
-		err := withSecretEnv(sec, func() error {
-			c, err := client.New(client.Config{SocketPath: sockPath})
-			if err != nil {
-				last = err
-				return err
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-			st, err := c.Status(ctx)
-			cancel()
-			if err == nil && st != nil && st.State == string(session.StateReady) {
-				return nil
-			}
-			if err != nil {
-				last = err
-				return err
-			}
-			if st != nil {
-				last = fmt.Errorf("daemon state %q", st.State)
-			} else {
-				last = fmt.Errorf("empty status")
-			}
-			return last
-		})
-		if err == nil {
-			return nil
+	return withSecretEnv(sec, func() error {
+		c, err := client.New(client.Config{SocketPath: sockPath})
+		if err != nil {
+			return err
 		}
-		time.Sleep(30 * time.Millisecond)
-	}
-	if last == nil {
-		last = fmt.Errorf("timeout")
-	}
-	return fmt.Errorf("daemon did not become ready: %w", last)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		if err := c.WaitReady(ctx); err != nil {
+			return fmt.Errorf("daemon did not become ready: %w", err)
+		}
+		return nil
+	})
 }
 
 func deviceLoginHandoff(ctx context.Context, httpClient *http.Client, openBrowser bool) (*loginHandoff, error) {

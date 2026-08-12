@@ -14,9 +14,11 @@ const (
 	MaxVerificationURILen = 2048
 )
 
-// isXAIHost reports whether host is x.ai or a true subdomain of x.ai.
-// Uses DNS labels (last two must be "x" and "ai") so that evil.notx.ai is rejected.
-func isXAIHost(host string) bool {
+// IsXAIHost reports whether host is x.ai or a true subdomain of x.ai.
+// Uses DNS labels (last two must be "x" and "ai") so that evil.notx.ai is
+// rejected. Shared pin primitive for IdP URL validation and the SDK's
+// bearer-injecting Transport.
+func IsXAIHost(host string) bool {
 	h := strings.ToLower(strings.TrimSpace(host))
 	h = strings.TrimSuffix(h, ".")
 	if h == "" {
@@ -59,7 +61,7 @@ func ValidateXAIURL(raw, field string) error {
 	if host == "" {
 		return fmt.Errorf("%s is missing a hostname", field)
 	}
-	if !isXAIHost(host) {
+	if !IsXAIHost(host) {
 		return fmt.Errorf("%s host %q is not on the x.ai origin", field, host)
 	}
 	return nil
@@ -106,7 +108,7 @@ func ValidateVerificationURI(raw string) error {
 	switch u.Scheme {
 	case "https":
 		host := strings.ToLower(u.Hostname())
-		if !isXAIHost(host) {
+		if !IsXAIHost(host) {
 			return fmt.Errorf("verification URI host %q is not on the x.ai origin", host)
 		}
 		return nil

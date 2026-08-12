@@ -91,6 +91,8 @@ leftovers are removed. On shutdown, the path is removed best-effort.
 6. **`--foreground`:** keep tokens in this process and serve until stop (no re-exec).  
 7. Daemon listens HTTP on the Unix socket; holds access + refresh tokens in memory.  
 8. Daemon exits on SIGINT/SIGTERM, failed serve, or successful `POST /logout`.
+   The detached Windows child has no console (no Ctrl+C); stop it with
+   `xai-oauth logout`.
 
 ### 2.5 `status` output (typical)
 
@@ -198,6 +200,9 @@ curl --unix-socket "$SOCK" -X POST \
   http://localhost/logout
 ```
 
+On Windows, `curl --unix-socket` support for AF_UNIX varies by curl build;
+prefer the CLI (`xai-oauth status|token|logout`) or the Go SDK.
+
 ---
 
 ## 4. Go SDK (`github.com/fun7257/xai-oauth/client`)
@@ -218,7 +223,8 @@ c, err := client.New(client.Config{
 | `SocketPath` | No | `Config.SocketPath` → `XAI_OAUTH_SOCKET` → `DefaultSocketPath()` |
 | *(secret)* | **Yes** | **env only** `XAI_OAUTH_SECRET` (no Config field) |
 
-Fixed client timeout: **30s**. No injectable `http.Client`, no TCP `BaseURL`.
+Fixed client timeout: **30s** (shorten per call via ctx). No injectable
+`http.Client`, no TCP `BaseURL`. `*Client` is safe for concurrent use.
 
 ### 4.2 Methods (`*Client`)
 
@@ -226,10 +232,14 @@ Fixed client timeout: **30s**. No injectable `http.Client`, no TCP `BaseURL`.
 |--------|------|---------|
 | `Get(ctx) (string, error)` | `GET /token` | access token |
 | `Status(ctx) (*Status, error)` | `GET /status` | status struct |
-| `Ready(ctx) (bool, string, error)` | `GET /ready` | ready flag + state |
+| `Ready(ctx) (bool, State, error)` | `GET /ready` | ready flag + state |
+| `WaitReady(ctx) error` | polls `GET /status` | nil once ready; fails fast on bad secret / sticky states |
 | `Health(ctx) error` | `GET /health` | nil if alive |
 | `Logout(ctx) error` | `POST /logout` | nil on success |
+| `Transport(base) http.RoundTripper` | — | bearer-injecting transport (see §4.6) |
+| `HTTPClient() *http.Client` | — | `&http.Client{Transport: c.Transport(nil)}` |
 | `SocketPath() string` | — | configured socket path |
+| `CloseIdleConnections()` | — | drop idle daemon connections |
 
 ### 4.2.1 Package helpers
 
@@ -238,17 +248,22 @@ Fixed client timeout: **30s**. No injectable `http.Client`, no TCP `BaseURL`.
 | `New(Config) (*Client, error)` | client (`XAI_OAUTH_SECRET` required) |
 | `DefaultSocketPath() string` | default UDS path (see §2.3) |
 
-### 4.3 `client.Status` struct
+### 4.3 `client.Status` struct and `State`
 
 ```go
+type State string // StateReady | StateReauthRequired | StateTierDenied
+                  // (Ready only: StateDegraded | StateNotReady)
+
 type Status struct {
-    State      string // ready | reauth_required | tier_denied
+    State      State
     HasExpiry  bool
-    ExpiresAt  string // RFC3339
-    TokenValid bool   // access token hard-valid right now
+    ExpiresAt  time.Time // zero when !HasExpiry
+    TokenValid bool      // access token hard-valid right now
     LastError  string
 }
 ```
+
+Comparisons against string literals still compile (`st.State == "ready"`).
 
 ### 4.4 Sentinel errors
 
@@ -256,12 +271,11 @@ Use `errors.Is`:
 
 | Variable | When |
 |----------|------|
+| `ErrUnreachable` | Daemon socket not reachable (not running / wrong path) |
 | `ErrUnauthorized` | Local secret rejected |
 | `ErrReauthRequired` | Need new `serve` / device login |
 | `ErrTierDenied` | Tier/entitlement denial |
 | `ErrUnavailable` | Transient failure; retry later |
-
-Dial failures (daemon down) are ordinary wrapped network errors, not the sentinels above.
 
 ### 4.5 Minimal app pattern
 
@@ -270,10 +284,25 @@ Dial failures (daemon down) are ordinary wrapped network errors, not the sentine
 c, err := client.New(client.Config{})
 if err != nil { /* handle */ }
 tok, err := c.Get(ctx)
-if err != nil { /* errors.Is reauth / unavailable / ... */ }
+if err != nil { /* errors.Is unreachable / reauth / unavailable / ... */ }
 // req.Header.Set("Authorization", "Bearer "+tok)
 // http to https://api.x.ai/...
 ```
+
+### 4.6 Bearer-injecting transport
+
+```go
+hc := c.HTTPClient() // or &http.Client{Transport: c.Transport(base)}
+resp, err := hc.Get("https://api.x.ai/v1/models")
+```
+
+- Injects `Authorization: Bearer <access_token>` (fresh from the daemon per
+  request; the daemon caches/refreshes) **only** for `https` requests whose
+  host is `x.ai` or a true subdomain — the bearer can never leak to foreign
+  origins.
+- Requests to other schemes/hosts pass through unchanged without a token
+  fetch; an existing `Authorization` header is never overwritten.
+- The transport never mutates the caller's request (clones before injecting).
 
 ---
 
@@ -312,7 +341,31 @@ Public client id is **not** a confidential secret; upstream policy may still cha
 
 ---
 
-## 7. Related docs
+## 7. Troubleshooting
+
+Symptom → likely cause → action. CLI messages appear on stderr; SDK errors
+match the sentinels in §4.4 via `errors.Is`.
+
+| Symptom | Likely cause | Action |
+|---------|--------------|--------|
+| `daemon: down` / `daemon not reachable` / SDK `ErrUnreachable` | No `serve` running, or CLI/SDK resolves a **different socket path** than the daemon (e.g. `XDG_RUNTIME_DIR` set in one shell but not the other) | Start `xai-oauth serve`; or pin the path explicitly on both sides with `XAI_OAUTH_SOCKET` / `--socket` |
+| HTTP 401 `unauthorized` / SDK `ErrUnauthorized` | `XAI_OAUTH_SECRET` missing or different from the serving process | Export the secret printed by `serve` (or the one you exported before `serve`); restart `serve` if it was generated and lost |
+| HTTP 401 `reauth_required` / SDK `ErrReauthRequired` | Refresh token rejected (`invalid_grant`), or session was logged out | Run `xai-oauth serve` again and complete device login |
+| HTTP 403 `tier_denied` / SDK `ErrTierDenied` | Account lacks API entitlement for OAuth access (HTTP 403 from IdP) | Check subscription tier; retry after upgrading — state is sticky until a new `serve` |
+| HTTP 503 `unavailable` / SDK `ErrUnavailable` | Transient IdP/network failure during refresh | Retry later; check `xai-oauth status` `last_error`; verify proxy env if egress goes through one |
+| `/ready` 503 with `state="degraded"` | Access token expired **and** the last refresh failed | Usually transient — self-heals on the next successful refresh; inspect `last_error` |
+| `socket … is in use by a live process` | Another daemon (or foreign process) is serving on that path | `xai-oauth logout` the old daemon first, or choose a different `--socket` |
+| `socket dir … must be mode 0700` / `not owned by current user` (Unix) | Socket parent dir is shared, group/world-accessible, or owned by another user | Point `--socket` / `XAI_OAUTH_SOCKET` at a private, user-owned directory |
+| `listen` fails on Windows (address family / protocol error) | Windows before 10 1803 / Server 2019 — no AF_UNIX support | Upgrade Windows; there is no Named Pipe / TCP fallback |
+| Generated secret lost (terminal closed) | Secret is printed once and never stored on disk | `xai-oauth logout` if reachable (or kill the daemon), then `serve` again with `XAI_OAUTH_SECRET` pre-exported |
+| Daemon "disappears" after closing the terminal (Windows) | The detached child has no console; it does not exit, only its window is gone | It is still running — use `xai-oauth status` / `logout` to manage it |
+
+The background daemon writes no logs (stdout/stderr → null device by design);
+`xai-oauth status` (`last_error`) is the diagnostic channel.
+
+---
+
+## 8. Related docs
 
 | Doc | Role |
 |-----|------|

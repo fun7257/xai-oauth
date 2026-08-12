@@ -65,8 +65,8 @@ func cmdStatus(args []string) error {
 		return err
 	}
 	fmt.Printf("state:  %s\n", st.State)
-	if st.HasExpiry && st.ExpiresAt != "" {
-		fmt.Printf("expires_at: %s\n", st.ExpiresAt)
+	if st.HasExpiry && !st.ExpiresAt.IsZero() {
+		fmt.Printf("expires_at: %s\n", st.ExpiresAt.UTC().Format(time.RFC3339))
 	}
 	if st.LastError != "" {
 		fmt.Printf("last_error: %s\n", st.LastError)
