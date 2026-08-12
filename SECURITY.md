@@ -77,8 +77,13 @@ the Go SDK still sends the secret on every call.
   `export XAI_OAUTH_SECRET='…'` before `status` / `token` / `logout`. It is not
   written to disk by this tool. Stderr may still enter terminal scrollback or
   session recorders.
-- Background daemon children receive the secret once via stdin handoff (not env,
-  not argv on the child).
+- Background daemon children receive the secret once via stdin handoff (not
+  argv), and `XAI_OAUTH_SECRET` is stripped from the child's environment so it
+  does not linger in `/proc/<pid>/environ`.
+- In-memory credential wiping (`zeroHandoff`, session `Clear`) is best-effort
+  reference dropping: Go strings are immutable, so stale copies can remain on
+  the heap until garbage collection (consistent with the process-memory risk
+  below).
 - Go SDK reads the secret **only** from `XAI_OAUTH_SECRET` (no `Config.Secret`).
 - `xai-oauth token` prints a full OAuth **access token** on stdout — treat that
   stream as secret (shell history, CI logs, screen shares).
@@ -97,7 +102,9 @@ the Go SDK still sends the secret on every call.
 - Same-UID processes can still open a `0600` socket; the **secret** is the
   second control. Do not run untrusted code as your user while `serve` is up.
 - Stale sockets from crashed processes are removed on next successful `serve`
-  bind when the path is a leftover socket file.
+  bind when the path is a leftover socket file. The path is connect-probed
+  first: if a live process still accepts on it, `serve` refuses instead of
+  unlinking a running daemon's socket.
 
 ## Outbound proxy
 

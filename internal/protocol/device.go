@@ -89,11 +89,8 @@ func PollDeviceToken(ctx context.Context, client *http.Client, tokenEndpoint, de
 	if err := ValidateXAIURL(tokenEndpoint, "token_endpoint"); err != nil {
 		return nil, newError("discovery_invalid", err.Error(), "reauth")
 	}
-	if interval < 1 {
-		interval = 1
-	}
-	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
-	currentInterval := interval
+	deadline := time.Now().Add(deviceAuthWindow(expiresIn))
+	currentInterval := clampPollInterval(interval)
 
 	for time.Now().Before(deadline) {
 		if err := ctx.Err(); err != nil {
@@ -148,10 +145,7 @@ func PollDeviceToken(ctx context.Context, client *http.Client, tokenEndpoint, de
 			}
 			continue
 		case "slow_down":
-			currentInterval++
-			if currentInterval > 30 {
-				currentInterval = 30
-			}
+			currentInterval = clampPollInterval(currentInterval + 1)
 			if err := sleepCtx(ctx, time.Duration(currentInterval)*time.Second); err != nil {
 				return nil, err
 			}
@@ -165,6 +159,29 @@ func PollDeviceToken(ctx context.Context, client *http.Client, tokenEndpoint, de
 		}
 	}
 	return nil, newError("device_timeout", "timed out waiting for device authorization", "reauth")
+}
+
+// deviceAuthWindow bounds the total poll window: the IdP-provided expires_in,
+// capped at MaxDeviceAuthWindow so a bogus upstream value cannot pin the
+// process in the poll loop for hours (library callers may lack the CLI's
+// outer login timeout).
+func deviceAuthWindow(expiresIn int) time.Duration {
+	w := time.Duration(expiresIn) * time.Second
+	if w > MaxDeviceAuthWindow {
+		return MaxDeviceAuthWindow
+	}
+	return w
+}
+
+// clampPollInterval bounds a poll interval in seconds to [1, MaxDevicePollInterval].
+func clampPollInterval(seconds int) int {
+	if seconds < 1 {
+		return 1
+	}
+	if maxSec := int(MaxDevicePollInterval / time.Second); seconds > maxSec {
+		return maxSec
+	}
+	return seconds
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {
@@ -239,11 +256,4 @@ func tryOpenBrowser(u string) bool {
 	// Reap the helper so Start does not leave an unreaped child.
 	go func() { _ = cmd.Wait() }()
 	return true
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

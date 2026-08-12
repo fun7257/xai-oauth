@@ -257,11 +257,14 @@ func spawnBackgroundDaemon(sockPath string, h *loginHandoff) (int, error) {
 	}
 	defer devNull.Close()
 
-	// Secret travels only in the stdin handoff (not env, not argv).
+	// Secret travels only in the stdin handoff (not env, not argv):
+	// strip XAI_OAUTH_SECRET from the inherited environment so it does not
+	// linger in the daemon's /proc/<pid>/environ.
 	cmd := exec.Command(exe, "serve",
 		"--from-login",
 		"--socket", sockPath,
 	)
+	cmd.Env = daemonEnv(os.Environ())
 	cmd.Stdout = devNull
 	cmd.Stderr = devNull
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
@@ -399,6 +402,25 @@ func sessionFromHandoff(r io.Reader) (*session.Session, string, error) {
 	return sess, sec, nil
 }
 
+// daemonEnv returns environ minus XAI_OAUTH_SECRET entries. The daemon child
+// receives the secret via the stdin handoff only; everything else (PATH, HOME,
+// proxy variables for IdP egress, …) is inherited unchanged.
+func daemonEnv(environ []string) []string {
+	out := make([]string, 0, len(environ))
+	prefix := client.EnvSecret + "="
+	for _, kv := range environ {
+		if strings.HasPrefix(kv, prefix) {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+// zeroHandoff drops references to handoff credentials as early as possible.
+// Best-effort only: Go strings are immutable, so copies (including encoder
+// buffers) may persist on the heap until garbage collection. This limits
+// accidental reuse; it is not a guaranteed memory wipe (see SECURITY.md).
 func zeroHandoff(h *loginHandoff) {
 	if h == nil {
 		return

@@ -76,18 +76,48 @@ type Status struct {
 	State     State     `json:"state"`
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
 	HasExpiry bool      `json:"has_expiry"`
-	LastError string    `json:"last_error,omitempty"`
+	// TokenValid reports whether the held access token is hard-valid right
+	// now (not past expiry). False does not imply failure: /token may still
+	// succeed via refresh.
+	TokenValid bool   `json:"token_valid"`
+	LastError  string `json:"last_error,omitempty"`
 }
 
 // Status returns a non-sensitive snapshot.
 func (s *Session) Status() Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := Status{State: s.state, HasExpiry: s.hasExpiry, LastError: s.lastError}
+	st := Status{
+		State:      s.state,
+		HasExpiry:  s.hasExpiry,
+		TokenValid: s.hardValidLocked(),
+		LastError:  s.lastError,
+	}
 	if s.hasExpiry {
 		st.ExpiresAt = s.expiresAt
 	}
 	return st
+}
+
+// ReadyReasonDegraded is reported by Ready when the state is nominally ready
+// but the access token has expired and the last refresh attempt failed, so
+// GET /token is likely to fail until the IdP recovers.
+const ReadyReasonDegraded = "degraded"
+
+// Ready reports whether GET /token can plausibly succeed right now:
+// state is ready, and either the access token is still hard-valid or no
+// refresh failure has been recorded. When not ready, reason is the sticky
+// state (reauth_required / tier_denied) or ReadyReasonDegraded.
+func (s *Session) Ready() (ready bool, reason string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state != StateReady {
+		return false, string(s.state)
+	}
+	if s.hardValidLocked() || s.lastError == "" {
+		return true, string(StateReady)
+	}
+	return false, ReadyReasonDegraded
 }
 
 // Clear wipes credentials from memory (logout). Subsequent GetAccessToken fails with reauth.
@@ -282,6 +312,10 @@ type call struct {
 	err error
 }
 
+// Do runs fn once per key; concurrent callers block and share the leader's
+// result. Late joiners cannot cancel via their own context — they wait on the
+// leader's call, bounded in practice by the IdP client timeout and the
+// caller-side HTTP timeouts.
 func (g *singleflight) Do(key string, fn func() (any, error)) (any, error, bool) {
 	g.mu.Lock()
 	if g.m == nil {

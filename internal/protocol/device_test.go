@@ -56,6 +56,40 @@ func TestPollDeviceTokenPendingCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestDeviceAuthWindowClamp(t *testing.T) {
+	cases := []struct {
+		expiresIn int
+		want      time.Duration
+	}{
+		{expiresIn: 600, want: 10 * time.Minute},
+		{expiresIn: 1800, want: MaxDeviceAuthWindow},
+		{expiresIn: 1 << 30, want: MaxDeviceAuthWindow}, // bogus huge value
+		{expiresIn: 0, want: 0},
+	}
+	for _, tc := range cases {
+		if got := deviceAuthWindow(tc.expiresIn); got != tc.want {
+			t.Fatalf("deviceAuthWindow(%d) = %v, want %v", tc.expiresIn, got, tc.want)
+		}
+	}
+}
+
+func TestClampPollInterval(t *testing.T) {
+	maxSec := int(MaxDevicePollInterval / time.Second)
+	cases := []struct{ in, want int }{
+		{in: 0, want: 1},
+		{in: -5, want: 1},
+		{in: 5, want: 5},
+		{in: maxSec, want: maxSec},
+		{in: maxSec + 1, want: maxSec},
+		{in: 1 << 30, want: maxSec},
+	}
+	for _, tc := range cases {
+		if got := clampPollInterval(tc.in); got != tc.want {
+			t.Fatalf("clampPollInterval(%d) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
