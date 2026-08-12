@@ -19,8 +19,8 @@ It is **not**:
 
 | Intended | Not intended |
 |----------|----------------|
-| **Linux / macOS** with Unix domain sockets | **Windows** (unsupported; no UDS control plane) |
-| Unix socket owned by your user (`0600`) | Shared host multi-user trust |
+| **Linux / macOS / Windows 10 1803+** with AF_UNIX sockets | Windows before 10 1803 (no AF_UNIX) |
+| Unix socket owned by your user (`0600`; Windows: user-profile NTFS ACLs) | Shared host multi-user trust |
 | One human operator, one OAuth session in one `serve` process | Network-exposed token minting |
 | CLI/SDK with the same local secret as `serve` | Shipping auto-generated secrets in git or tickets |
 
@@ -47,7 +47,7 @@ the Go SDK still sends the secret on every call.
 | Control | Default |
 |---------|---------|
 | Listen | Unix domain socket only (CLI) |
-| Socket file mode | `0600` after bind; parent dir `0700` **and owned by the serving UID** (listen fails otherwise) |
+| Socket file mode | Unix: `0600` after bind; parent dir `0700` **and owned by the serving UID** (listen fails otherwise). Windows: chmod is a no-op — isolation comes from the parent directory's NTFS ACLs (default path under `%LOCALAPPDATA%`) |
 | Local authentication | Required for `/token`, `/status`, `/logout` (constant-time secret compare via SHA-256 digests) |
 | Open without secret (server) | `/health`, `/ready` only |
 | Token storage | **Memory only** — lost on process exit; no `tokens.json` |
@@ -97,8 +97,16 @@ the Go SDK still sends the secret on every call.
   3. `~/.xai-oauth/daemon.sock`
   4. `$TMPDIR/xai-oauth/daemon.sock` only if home is unavailable (weaker
      multi-user namespace; prefer setting home or `XAI_OAUTH_SOCKET`)
-- Socket file mode `0600`; parent dir mode `0700` **and owned by the serving UID**
-  after bind (foreign-owned or group/other-accessible parents are refused).
+  - Windows: `%LOCALAPPDATA%\xai-oauth\daemon.sock` (`os.UserCacheDir`)
+- Unix: socket file mode `0600`; parent dir mode `0700` **and owned by the
+  serving UID** after bind (foreign-owned or group/other-accessible parents
+  are refused).
+- Windows: POSIX modes do not apply; per-user isolation relies on the NTFS
+  ACLs inherited from the socket's parent directory. The default
+  `%LOCALAPPDATA%` location is accessible to the owning user, SYSTEM, and
+  Administrators only (Administrators are in the trust base, like root on
+  Unix). Do not point `--socket` / `XAI_OAUTH_SOCKET` at a shared or
+  world-readable directory.
 - Same-UID processes can still open a `0600` socket; the **secret** is the
   second control. Do not run untrusted code as your user while `serve` is up.
 - Stale sockets from crashed processes are removed on next successful `serve`

@@ -27,13 +27,14 @@
 | 安全默认 | Unix socket 0600 + 本机 secret；敏感路由鉴权 |
 | CLI | `serve` / `status` / `token` / `logout` / `version`（路线 B） |
 | 账号模式 | 仅 **xAI OAuth2 个人** |
+| 平台 | Linux / macOS / **Windows 10 1803+**（统一 AF_UNIX 控制面） |
 
 ### 非目标
 
 - 反代 `api.x.ai`、**落盘 token**、独立 `login` 子命令
 - Team / 企业 IdP、热重登 UI、多账号
 - 多进程 flock / sibling adopt
-- **Windows**（无 UDS 控制面 / Named Pipe / 本机 TCP 回退；仅 Linux / macOS）
+- **Named Pipe / 本机 TCP 回退**（Windows 亦走 AF_UNIX；不支持 Windows 10 1803 以下）
 
 ---
 
@@ -50,7 +51,7 @@ xai-oauth serve     ──设备码──► 内存 Session ──HTTP/UDS──
       └── Bearer ──► api.x.ai
 ```
 
-- **传输：** Unix domain socket（默认顺序：`$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` → `~/.xai-oauth/daemon.sock` → `$TMPDIR/xai-oauth/daemon.sock`），socket 文件 **0600**，父目录 **0700 且属主为当前 UID**（否则拒绝 listen）  
+- **传输：** Unix domain socket（Unix 默认顺序：`$XDG_RUNTIME_DIR/xai-oauth/daemon.sock` → `~/.xai-oauth/daemon.sock` → `$TMPDIR/xai-oauth/daemon.sock`；Windows：`%LOCALAPPDATA%\xai-oauth\daemon.sock`）。Unix 上 socket 文件 **0600**、父目录 **0700 且属主为当前 UID**（否则拒绝 listen）；Windows 上依赖 `%LOCALAPPDATA%` 的用户 NTFS ACL（chmod 无效）  
 - **协议：** HTTP（`GET /token` 等）跑在 Unix socket 上  
 - **唯一持有凭证的进程：** `serve`  
 - **重登：** 再次执行 `serve`  
@@ -192,7 +193,7 @@ CLI 的 status/token/logout **必须**已 export 该环境变量。
 | env | `XAI_OAUTH_SECRET` | 本机 API secret（CLI **唯一**来源；serve 空则生成） |
 | env | 标准 `HTTP(S)_PROXY` 等 | 仅出站 IdP；**不**用于 UDS |
 
-监听：`net.Listen("unix", path)`，socket **0600**，父目录 **0700 且属主为当前 UID**。  
+监听：`net.Listen("unix", path)`；Unix 上 socket **0600**、父目录 **0700 且属主为当前 UID**，Windows 上依赖父目录 NTFS ACL。  
 HTTP：`ReadHeaderTimeout` / `ReadTimeout` / `WriteTimeout` / `IdleTimeout` / `MaxHeaderBytes`。
 
 ---
