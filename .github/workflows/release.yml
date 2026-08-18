@@ -25,6 +25,9 @@ jobs:
       - name: Check
         run: make check
 
+      - name: govulncheck (release gate)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
       - name: Build release assets
         env:
           VERSION: ${{ github.ref_name }}

@@ -19,7 +19,7 @@ LDFLAGS  ?= -s -w -X main.version=$(VERSION)
 COVERPROFILE ?= coverage.out
 
 .PHONY: help all build install uninstall \
-	test test-race cover vet fmt fmt-check tidy check clean version
+	test test-race cover vet vuln fmt fmt-check tidy check clean version
 
 .DEFAULT_GOAL := help
 
@@ -51,6 +51,9 @@ cover: ## Run tests with coverage report (coverage.out + func summary)
 
 vet: ## Run go vet
 	$(GO) vet $(GOFLAGS) $(PKG)
+
+vuln: ## Scan for known vulnerabilities (govulncheck; needs network)
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.1.4 $(PKG)
 
 fmt: ## Format all Go sources (gofmt -w)
 	@gofmt -w $$(find . -name '*.go' -not -path './.git/*')
