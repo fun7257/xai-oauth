@@ -14,7 +14,7 @@
 | 应该 | 不要 |
 |------|------|
 | 使用默认 **仅属主可访问** 的 Unix socket（0600） | 当成共享/公网服务 |
-| 只通过环境变量 **`XAI_OAUTH_SECRET`** 提供本机 secret（CLI **无** `--secret`） | 把 secret 写进命令行或可读脚本 |
+| 只通过环境变量 **`XAI_OAUTH_SECRET`** 提供本机 secret（CLI **无** `--secret`；serve 要求自设 secret ≥16 字符） | 把 secret 写进命令行或可读脚本 |
 | 将 OAuth access/refresh 当秘密 | 完整 token 进日志；`token` 的 stdout 也当秘密 |
 | logout / reauth 后重新 `serve` | 指望进程重启后仍登录 |
 
@@ -197,8 +197,8 @@ make cover
 
 | Workflow | 触发 | 内容 |
 |----------|------|------|
-| [CI](.github/workflows/ci.yml) | `main` 的 push/PR、**每日定时**、手动 | Ubuntu/macOS 上 `make check` + race；Windows 上 vet/test/race；交叉编译 Linux/macOS/Windows（定时/手动会上传 artifact） |
-| [Release](.github/workflows/release.yml) | tag `v*` | check + 发布二进制 |
+| [CI](.github/workflows/ci.yml) | `main` 的 push/PR、**每日定时**、手动 | Ubuntu/macOS 上 `make check` + race；Windows 上 vet/test/race；**govulncheck 门禁**；交叉编译 Linux/macOS/Windows（定时/手动会上传 artifact） |
+| [Release](.github/workflows/release.yml) | tag `v*` | check + **govulncheck 门禁** + 发布二进制 |
 
 ## 许可证
 
