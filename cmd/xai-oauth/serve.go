@@ -64,6 +64,13 @@ func cmdServe(args []string) error {
 	// Operator secret: environment only (no --secret flag).
 	sec := strings.TrimSpace(os.Getenv(client.EnvSecret))
 	generated := false
+	if sec != "" && len(sec) < minOperatorSecretLen {
+		return fmt.Errorf(
+			"XAI_OAUTH_SECRET is too short (%d chars, minimum %d): it gates /token and /handoff (refresh-token export); "+
+				"use e.g. `openssl rand -hex 16`, or unset it to auto-generate. "+
+				"For a running daemon with a short secret: logout first, then serve with the stronger secret",
+			len(sec), minOperatorSecretLen)
+	}
 
 	// Converge to a healthy daemon: take over a running one (session
 	// preserved, no re-login), replace one whose session is sticky-dead
@@ -426,6 +433,14 @@ func zeroHandoff(h *loginHandoff) {
 	h.TokenEndpoint = ""
 	h.ExpiresIn = 0
 }
+
+// minOperatorSecretLen is the minimum length serve accepts for an
+// operator-provided XAI_OAUTH_SECRET. The secret is the sole authentication
+// for /token and /handoff (which exports the refresh token), so a short
+// secret undermines the whole model; generated secrets are 64 hex chars.
+// Control commands (status/token/logout) intentionally do not enforce this,
+// keeping an existing daemon with a shorter secret manageable.
+const minOperatorSecretLen = 16
 
 func randomSecret() (string, error) {
 	b := make([]byte, 32)

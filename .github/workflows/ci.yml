@@ -74,9 +74,26 @@ jobs:
         shell: bash
         run: go build -trimpath -ldflags "-s -w -X main.version=ci" -o xai-oauth.exe ./cmd/xai-oauth
 
+  vuln:
+    # Known-vulnerability gate: fails when govulncheck finds reachable
+    # vulnerabilities (stdlib or dependencies). Same scanner as `make vuln`.
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
   build:
     name: Cross-build
-    needs: [test, test-windows]
+    needs: [test, test-windows, vuln]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

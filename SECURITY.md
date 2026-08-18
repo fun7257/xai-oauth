@@ -75,6 +75,11 @@ the Go SDK still sends the secret on every call.
 
 - **CLI: environment only** — `XAI_OAUTH_SECRET`. There is **no** `--secret`
   flag (avoids argv leakage via `ps` / `/proc/*/cmdline`).
+- `serve` refuses operator-provided secrets shorter than **16 characters**
+  (the secret alone gates `/token` and `/handoff`, which exports the refresh
+  token). Auto-generated secrets are 64 hex chars (256-bit). Control commands
+  do not enforce the floor, so an existing daemon with a shorter secret stays
+  manageable — `logout`, then `serve` with a stronger one.
 - Source the variable from a private file or shell profile if needed; do not
   paste it into shared scripts.
 - If unset, `serve` generates a random secret and prints it **once** to stderr —

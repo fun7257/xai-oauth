@@ -266,14 +266,18 @@ make check     # fmt-check + vet + test
 make build     # ./xai-oauth
 make test-race
 make cover
+make vuln      # govulncheck (known-vulnerability scan; needs network)
 ```
+
+Builds auto-switch to the patched toolchain pinned in `go.mod`
+(`toolchain go1.26.6+`); any installed Go ≥1.21 bootstraps it.
 
 ### CI
 
 | Workflow | Trigger | What it does |
 |----------|---------|----------------|
-| [CI](.github/workflows/ci.yml) | push/PR to `main`, **daily schedule**, manual | `make check` + race on Ubuntu & macOS; vet/test/race on Windows; cross-build Linux/macOS/Windows (scheduled/manual uploads artifacts) |
-| [Release](.github/workflows/release.yml) | tag `v*` | check + publish release binaries |
+| [CI](.github/workflows/ci.yml) | push/PR to `main`, **daily schedule**, manual | `make check` + race on Ubuntu & macOS; vet/test/race on Windows; **govulncheck gate**; cross-build Linux/macOS/Windows (scheduled/manual uploads artifacts) |
+| [Release](.github/workflows/release.yml) | tag `v*` | check + **govulncheck gate** + publish release binaries |
 
 ## License
 

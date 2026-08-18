@@ -323,7 +323,7 @@ resp, err := hc.Get("https://api.x.ai/v1/models")
 
 | Variable | Used by | Purpose |
 |----------|---------|---------|
-| `XAI_OAUTH_SECRET` | CLI + SDK (only secret source; serve generates if empty) | Local API secret |
+| `XAI_OAUTH_SECRET` | CLI + SDK (only secret source; serve generates if empty; serve requires ≥16 chars when operator-provided) | Local API secret |
 | `XAI_OAUTH_SOCKET` | CLI, SDK | Unix socket path |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` / `NO_PROXY` (and lowercase) | `serve` egress only | Outbound OAuth to `auth.x.ai` |
 
@@ -373,6 +373,7 @@ match the sentinels in §4.4 via `errors.Is`.
 | `socket … in use by a live process` | Bind retry window expired: a predecessor did not release the path in time, or a foreign process serves there | Retry `serve`; if it persists, inspect the process holding the socket, or choose a different `--socket` |
 | `socket dir … must be mode 0700` / `not owned by current user` (Unix) | Socket parent dir is shared, group/world-accessible, or owned by another user | Point `--socket` / `XAI_OAUTH_SOCKET` at a private, user-owned directory |
 | `listen` fails on Windows (address family / protocol error) | Windows before 10 1803 / Server 2019 — no AF_UNIX support | Upgrade Windows; there is no Named Pipe / TCP fallback |
+| `XAI_OAUTH_SECRET is too short` | Operator-provided secret under 16 characters; it solely gates `/token` and `/handoff` | Use a longer secret (e.g. `openssl rand -hex 16`) or unset to auto-generate; for a running daemon: `logout`, then `serve` with the stronger secret |
 | Generated secret lost (terminal closed) | Secret is printed once and never stored on disk | `xai-oauth logout` if reachable (or kill the daemon), then `serve` again with `XAI_OAUTH_SECRET` pre-exported |
 | Daemon "disappears" after closing the terminal (Windows) | The detached child has no console; it does not exit, only its window is gone | It is still running — use `xai-oauth status` / `logout` to manage it |
 
