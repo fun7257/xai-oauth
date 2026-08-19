@@ -16,7 +16,7 @@ call `https://api.x.ai` themselves with that bearer.
 | Do | Don’t |
 |----|--------|
 | Keep the daemon on a **user-only Unix socket** (default `0600`) | Treat this as a shared or network service |
-| Set **`XAI_OAUTH_SECRET`** in the environment (CLI has no `--secret` flag) | Put the secret on the command line or in world-readable scripts |
+| Set **`XAI_OAUTH_SECRET`** in the environment (CLI has no `--secret` flag; `serve` requires operator-provided secrets to be ≥16 chars) | Put the secret on the command line or in world-readable scripts |
 | Treat OAuth access/refresh tokens as secrets | Log full tokens or leave `token` stdout in world-readable CI logs |
 | Rerun `serve` after logout / reauth — and to **upgrade in place** (running daemon's session is taken over, no re-login) | Expect tokens to survive a crash or reboot (memory only) |
 
@@ -210,6 +210,7 @@ Sentinel errors: `client.ErrUnreachable` (daemon down), `ErrUnauthorized`,
 | GET | `/status` | local secret | Non-sensitive state |
 | GET | `/token` | local secret | Fresh access_token |
 | POST | `/logout` | local secret | Wipe memory; process exits |
+| POST | `/handoff` | local secret | Serve-takeover plumbing: exports the session (incl. refresh token), daemon drains and exits |
 
 \*Server does not require secret on health/ready; the SDK always sends the secret.
 

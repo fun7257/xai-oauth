@@ -146,6 +146,7 @@ resp, err := hc.Get("https://api.x.ai/v1/models")
 | GET | `/health` `/ready` | 服务端可不校验 secret |
 | GET | `/status` `/token` | 本机 secret |
 | POST | `/logout` | 本机 secret |
+| POST | `/handoff` | 本机 secret（接管专用：导出会话**含 refresh token**，daemon 随后退出；不进 SDK） |
 
 ```bash
 curl --unix-socket "$XAI_OAUTH_SOCKET" \
@@ -191,7 +192,11 @@ make check     # fmt-check + vet + test
 make build     # ./xai-oauth
 make test-race
 make cover
+make vuln      # govulncheck 已知漏洞扫描（需联网）
 ```
+
+构建会自动切换到 `go.mod` 钉定的补丁版 toolchain（`toolchain go1.26.6+`）；
+本机装任意 Go ≥1.21 即可自动引导。
 
 ### CI
 
