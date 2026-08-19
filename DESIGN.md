@@ -1,6 +1,6 @@
 # xai-oauth 设计方案
 
-> 本机 OAuth sidecar（**路线 B：纯 daemon 控制面**）：`serve` 设备码登录后会话仅存内存；  
+> 本机 OAuth sidecar（**路线 B：纯 daemon 控制面**）：`serve` 设备码登录后会话仅存内存，升级时经 `/handoff` 免登录接管；  
 > `status` / `token` / `logout` 与 SDK 通过 **Unix socket 上的 HTTP** 操作该进程；  
 > 客户端拿到 `access_token` 后直连 `api.x.ai`。
 
@@ -182,7 +182,7 @@ workspaces:read workspaces:write
 | POST /logout | secret | 清内存；serve 随后退出 |
 | POST /handoff | secret | 会话接管（**含 RT**，仅进程间升级用，不进 SDK）；drain 后退出 |
 
-Secret：仅 **`XAI_OAUTH_SECRET`**（CLI 无 `--secret`）；serve 未设置时可随机生成并打印一次。  
+Secret：仅 **`XAI_OAUTH_SECRET`**（CLI 无 `--secret`）；serve 未设置时可随机生成并打印一次；自设值须 **≥16 字符**（仅 serve 强制，控制命令不校验）。  
 CLI 的 status/token/logout **必须**已 export 该环境变量。
 
 ---
@@ -195,7 +195,7 @@ CLI 的 status/token/logout **必须**已 export 该环境变量。
 | flag | `--no-browser` | false（默认尝试打开浏览器） |
 | flag | `--foreground` | false（登录成功后默认后台 re-exec daemon） |
 | env | `XAI_OAUTH_SOCKET` | 覆盖默认 socket 路径 |
-| env | `XAI_OAUTH_SECRET` | 本机 API secret（CLI **唯一**来源；serve 空则生成） |
+| env | `XAI_OAUTH_SECRET` | 本机 API secret（CLI **唯一**来源；serve 空则生成，自设须 ≥16 字符） |
 | env | 标准 `HTTP(S)_PROXY` 等 | 仅出站 IdP；**不**用于 UDS |
 
 监听：`net.Listen("unix", path)`；Unix 上 socket **0600**、父目录 **0700 且属主为当前 UID**，Windows 上依赖父目录 NTFS ACL。  

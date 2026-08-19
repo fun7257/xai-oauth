@@ -85,8 +85,8 @@ leftovers are removed. On shutdown, the path is removed best-effort.
    - secret matches + session sticky-dead (`reauth_required` /
      `tier_denied`) → device login first, then the dead daemon is stopped
      and replaced (its tokens were already wiped; nothing is lost).
-   - `XAI_OAUTH_SECRET` unset or wrong → refuse (never disturbs a daemon it
-     cannot authenticate to).
+   - `XAI_OAUTH_SECRET` unset, wrong, or under the 16-char floor → refuse
+     (never disturbs a daemon it cannot authenticate to).
    - daemon predates `/handoff` → refuse with a hint (`logout`, then one
      final re-login).
 2. Otherwise (nothing listening): resolve scope (fixed constant; see §6).  
